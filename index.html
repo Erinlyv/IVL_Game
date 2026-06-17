@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IVL 模拟器 · 可玩切片 v1.2</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="logo">IVL <span>模拟器</span></div>
+      <div class="tagline">第五人格 · 职业电竞选手生涯模拟 · 可玩垂直切片 v1.2</div>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <div id="hud" class="hud"></div>
+        <div class="logwrap">
+          <div class="logtitle">事件流水</div>
+          <div id="log" class="log"></div>
+        </div>
+      </aside>
+
+      <section class="stage">
+        <div id="main" class="main"></div>
+      </section>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="engine.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
