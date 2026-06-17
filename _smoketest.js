@@ -1,168 +1,212 @@
-/* 冲烟测试 / 头脑风暴式回归 (v1.2)：用 JS 引擎(engine.js)自动重跑若干生涯，
- * 验证可玩切片的引擎移植没有崩溃，且夺冠率/结局分布与已验证脚本同量级。
- * 自动策略：训练总练最弱属性(正常强度)；突发事件统一选 0 号选项；
- * 赛中交互事件选 0 号选项。仅供开发期使用，可删。运行： node _smoketest.js 5000
+/* 冲烟测试 / 头脑风暴式回归 (v2.3)：用 JS 引擎(engine.js)自动重跑若干档位，
+ * 验证第二版切片的引擎移植没有崩溃、且夺冠率与《回归报告v2.3》同量级。
+ * 自动策略：突发事件统一选 0 号选项(私联粉丝选婉拒)；赛中事件选 0 号选项。
+ * 仅供开发期使用，可删。运行： node _smoketest.js 8000
  */
 global.window = global;
 require("./engine.js");
 const E = global.IVL;
 
-function autoTrainPeriod(p, n, year) {
-  p.stamina = p.stamina_max;
-  const attrs = ["tech", "tac", "phys", "stab"];
+function autoTrainPeriod(p, n, year, age, attrs, intensity, attendPop) {
+  p.stamina = p.stamina_max; p.inj_train_mult = 1.0;
+  let trained = false;
   for (let i = 0; i < n; i++) {
-    // 选当前最弱属性对应的训练项目
-    const weakest = attrs.reduce((a, b) => (p[a] <= p[b] ? a : b));
-    const projMap = { tech: "单练", tac: "团队训练", phys: "体能训练", stab: "直播排位" };
-    let proj = projMap[weakest];
-    const cost = E.CONFIG.TRAIN[proj].cost;
-    if (p.stamina < cost) proj = "休息";
-    E.applyTraining(p, proj, "正常", year);
-
-    // 事件：腱鞘炎 → 通用事件(选 0 号)
-    const tenoP = 0.05 + (year - 1 + 18 - 18) * 0.015;
-    if (proj !== "休息" && Math.random() < tenoP) {
-      p.phys = Math.max(0, p.phys - 4); p.teno_next = true;
-    } else if (proj !== "休息" && Math.random() < E.CONFIG.TRAIN_EVENT_P) {
-      const key = E.TRAIN_EVENT_KEYS[Math.floor(Math.random() * E.TRAIN_EVENT_KEYS.length)];
-      const ev = E.TRAIN_EVENTS[key];
-      ev.options[0].apply(p);
-      p._clamp();
+    let proj = attrs.reduce((a, b) => (p[a[1]] <= p[b[1]] ? a : b))[0];
+    let it = intensity;
+    const cost = E.CONFIG.TRAIN[proj].cost * E.CONFIG.INTENSITY[it][1];
+    if (p.stamina < cost) { proj = "休息"; it = "正常"; }
+    E.applyTraining(p, proj, it, year);
+    if (proj === "休息") continue;
+    trained = true;
+    if (Math.random() < E.CONFIG.TRAIN_EVENT_P) {
+      const k = E.choiceOf(E.TRAIN_EVENT_KEYS);
+      const ev = E.TRAIN_EVENTS[k];
+      // 流量/商务类事件：attendPop 选 0(吸粉)，否则选 1(专注训练)；其余选 0(主动成长支线)
+      const POP_EV = { "漫展邀约": 1, "节目录制": 1, "商务邀约": 1, "短视频爆火": 1 };
+      const idx = (k in POP_EV) ? (attendPop ? 0 : 1) : 0;
+      ev.options[idx].apply(p); p._clamp();
       if (p._fired) throw { forced: "你被开除了！" };
     }
   }
+  if (trained) E.rollInjury(p, age, false);
+  // 自动理疗：带腱鞘炎且有钱就清(模拟玩家会处理)
+  if (p.teno_active && p.money >= 600) { p.money -= 600; E.healInjury(p); }
 }
 
-function autoGame(p, stage, year, oppPopBase, winPop) {
-  p.stamina -= 10;
+function autoMatch(p, stage, oppPop, winPop, year, opts = {}) {
+  const { oppBonus = 0, dayFirst = false } = opts;
+  if (dayFirst) { p.stamina = E.matchStartStamina(p); p.fired_events = new Set(); }
+  if (!p.fired_events) p.fired_events = new Set();
+  p.stamina -= E.gameCost(stage);
   const fainted = p.stamina <= 0;
-  const injuredBefore = p.injury_this_tourney;
-  const cp = p.cp;
-  const luckOff = (p.luck - 50) * 0.10;
-  const V = 20 - p.stab * 0.15;
-  const rfloat = E.rnd(-V, V);
-  const diff = p.pop - oppPopBase;
-  const cheer = diff >= 80 ? 5 : (diff >= 30 ? 3 : 0);
-
   let fdelta = 0;
-  const evt = E.rollMatchEvent(p);
-  if (evt.needChoice) {
-    const opt = evt.options[0];
-    if (evt.custom) { const r = opt.apply(p); fdelta = r.f; }
-    else { opt.apply(p); fdelta = opt.fdelta || 0; }
-  } else fdelta = evt.fdelta || 0;
-
-  const buff = p.nextGameBuff; p.nextGameBuff = 0;
-  let inner = cp + luckOff + rfloat + cheer + fdelta + buff;
-  if (p.teno_next) { inner -= 12; p.teno_next = false; }
-  if (injuredBefore) inner -= 8;
-  if (p.stamina < 20) inner -= 15;
-  if (p.negative_news) inner *= 0.90;
-  const F = Math.max(0, Math.min(100, inner));
-  const team = 0.8 * F + 0.2 * E.npcSelf(year);
-  const opp = E.sampleOpp(stage, year);
-  const win = (!fainted) && (team > opp);
-  if (win) { p.addPop(winPop); p.money += 100; }
+  const ev = E.rollMatchEvent(p);
+  if (ev) { if (ev.needChoice) { fdelta = ev.options[0].resolve(p).fdelta; } else { fdelta = ev.fdelta || 0; } }
+  const buff = p.nextGameBuff || 0; p.nextGameBuff = 0;
+  const { F } = E.computeF(p, stage, oppPop, year, oppBonus, fdelta, buff);
+  const { win } = E.settleGame(p, stage, oppPop, winPop, year, F, fainted, oppBonus);
   return { win, F };
 }
 
-function autoKnockout(p, stage, year, oppPopBase, winPop) {
-  p.stamina = p.stamina_max;
-  let wins = 0; const fList = [];
-  for (let g = 0; g < 3; g++) {
-    const r = autoGame(p, stage, year, oppPopBase, winPop);
-    fList.push(r.F);
-    if (r.win) wins++; else break;
+function regular(p, year) {
+  p.stamina = E.matchStartStamina(p); p.fired_events = new Set();
+  let w = 0; for (let g = 0; g < 9; g++) if (autoMatch(p, "常规", E.OPP_POP["常规"], E.WIN_POP["常规"], year).win) w++;
+  const others = []; for (let i = 0; i < 9; i++) { let x = 0; for (let k = 0; k < 9; k++) if (Math.random() < 0.5) x++; others.push(x); }
+  const better = others.filter(o => o > w).length, ties = others.filter(o => o === w).length;
+  p.recent_perf = w / 9;
+  return 1 + better + E.randint(0, ties);
+}
+
+function playoff(p, seed, year) {
+  const fl = [];
+  const g = (dayFirst, key) => { const r = autoMatch(p, "季后", E.OPP_POP["季后"], E.WIN_POP["季后"], year, { dayFirst, oppBonus: key ? 2 : 0 }); fl.push(r.F); return r.win; };
+  let place;
+  if (seed <= 4) {
+    const inWr1 = (seed === 1 || seed === 4);
+    if (g(true, false)) {
+      if (g(true, false)) place = g(true, true) ? 1 : 2;
+      else if (g(true, true)) place = g(true, true) ? 1 : 2;
+      else place = 3;
+    } else if (inWr1) {
+      if (!g(true, false)) place = 4;
+      else if (!g(false, true)) place = 3;
+      else place = g(true, true) ? 1 : 2;
+    } else {
+      if (!g(true, false)) place = 5;
+      else if (!g(true, false)) place = 4;
+      else if (!g(false, true)) place = 3;
+      else place = g(true, true) ? 1 : 2;
+    }
+  } else {
+    if (!g(true, false)) place = 6;
+    else if (!g(true, false)) place = 5;
+    else if (!g(true, false)) place = 4;
+    else if (!g(false, true)) place = 3;
+    else place = g(true, true) ? 1 : 2;
   }
-  if (wins === 3) return { champ: true, runner: false, place: 1, fList };
-  if (wins === 2) return { champ: false, runner: true, place: 2, fList };
-  if (wins === 1) return { champ: false, runner: false, place: 4, fList };
-  return { champ: false, runner: false, place: 6, fList };
+  return { place, fl };
 }
 
-function autoRegular(p, year) {
-  p.injury_this_tourney = false; p.stamina = p.stamina_max;
-  let wins = 0;
-  for (let g = 0; g < 9; g++) if (autoGame(p, "常规", year, E.OPP_POP["常规"], E.WIN_POP["常规"]).win) wins++;
-  const others = []; for (let i = 0; i < 9; i++) { let w = 0; for (let k = 0; k < 9; k++) if (Math.random() < 0.5) w++; others.push(w); }
-  const better = others.filter(w => w > wins).length;
-  const ties = others.filter(w => w === wins).length;
-  const rank = 1 + better + E.randint(0, ties);
-  return { rank, inPlayoff: rank <= 6 };
+function domestic(p, kind, year, age) {
+  E.rollInjury(p, age, true);
+  const rank = regular(p, year);
+  if (rank > 6) { E.endCompetition(p); return 8; }
+  p.playoff_count += 1;
+  const { place, fl } = playoff(p, rank, year);
+  if (place === 1) E.settleChamp(p, kind, year, E.checkFMVP(p, year, fl).won);
+  else if (place === 2) E.settleRunnerup(p, kind);
+  else if (place === 3) E.settleThird(p, kind);
+  E.endCompetition(p);
+  return place;
 }
 
-function settle(p, kind, r) {
-  if (r.champ) { const fm = E.checkFMVP(p, /*year*/ p._year, r.fList); E.settleChamp(p, kind, fm.won); }
-  else if (r.runner) E.settleRunnerup(p, kind);
+function ivs(p, year, age) {
+  E.rollInjury(p, age, true);
+  p.stamina = E.matchStartStamina(p); p.fired_events = new Set();
+  let w = 0; const fl = [];
+  for (let g = 0; g < 3; g++) { const r = autoMatch(p, "IVS", E.OPP_POP["IVS"], E.WIN_POP["IVS"], year); fl.push(r.F); if (r.win) w++; else break; }
+  if (w === 3) E.settleChamp(p, "IVS", year, E.checkFMVP(p, year, fl).won);
+  else if (w === 2) E.settleRunnerup(p, "IVS");
+  E.endCompetition(p);
 }
 
-function autoSelection(p, year) {
+function abyss(p, year, age, seeded) {
+  E.rollInjury(p, age, true);
+  if (!seeded) { p.stamina = E.matchStartStamina(p); p.fired_events = new Set(); let w = 0; for (let g = 0; g < 2; g++) if (autoMatch(p, "预选", E.OPP_POP["深渊"], E.WIN_POP["预选"], year).win) w++; if (w < 1) { E.endCompetition(p); return; } }
+  p.stamina = E.matchStartStamina(p); p.fired_events = new Set();
+  let wg = 0; for (let g = 0; g < 3; g++) if (autoMatch(p, "小组", E.OPP_POP["深渊"], E.WIN_POP["小组"], year).win) wg++;
+  if (wg < 2) { E.endCompetition(p); return; }
+  p.stamina = E.matchStartStamina(p); p.fired_events = new Set();
+  const fl = []; const fg = (key) => { const r = autoMatch(p, "总决", E.OPP_POP["深渊"], E.WIN_POP["总决"], year, { oppBonus: key ? 2 : 0 }); fl.push(r.F); return r.win; };
+  if (fg(false)) {
+    if (fg(false)) { if (fg(true)) E.settleChamp(p, "深渊", year, E.checkFMVP(p, year, fl).won); else E.settleRunnerup(p, "深渊"); }
+    else { if (fg(true)) E.settleThird(p, "深渊"); }
+  }
+  E.endCompetition(p);
+}
+
+function shop(p, cfg) {
+  p.has_wrist = false; p.has_checkup = false;
+  if (!cfg.shop) { if (cfg.therapy && p.teno_active && p.money >= 600) { p.money -= 600; E.healInjury(p); } return; }
+  if (cfg.wrist && p.money >= 500) { p.money -= 500; p.has_wrist = true; }
+  if (cfg.checkup && p.money >= 600) { p.money -= 600; p.has_checkup = true; }
+  for (const it of E.SHOP_ITEMS) {
+    if (it.kind !== "attr" || !(cfg.shopItems || []).includes(it.name)) continue;
+    for (let q = 0; q < it.qty; q++) { if (p.money < it.price) break; p.money -= it.price; for (const [k, v] of Object.entries(it.eff)) p[k] = Math.min(100, p[k] + v); }
+  }
+  p._clamp();
+}
+
+function sel(p, year) {
   if (p.is_starter) return true;
   if (Math.random() < E.CONFIG.SELECT_VACANCY_P) { p.is_starter = true; p.ever_starter = true; p.consec_fail = 0; return true; }
-  const score = p.cp + (p.luck - 50) * 0.1;
-  let thr = E.selectThreshold(year);
-  if (p.identity === "主播" && year === 1) thr -= 3;
-  if (score >= thr) { p.is_starter = true; p.ever_starter = true; p.consec_fail = 0; return true; }
-  p.consec_fail += 1;
-  if (year === 1) p.first_year_failed = true;
+  let thr = E.selectThreshold(year); if (p.identity === "主播" && year === 1) thr -= 3;
+  if (p.cp + (p.luck - 50) * 0.1 >= thr) { p.is_starter = true; p.ever_starter = true; p.consec_fail = 0; return true; }
+  p.consec_fail++; p.ever_fail = true; if (year === 1) p.first_year_failed = true;
   if (p.consec_fail >= 3) throw { forced: "饮水机管理员" };
   return false;
 }
 
-function runCareer(identity) {
-  const p = new E.Player(identity, "AUTO", "求生者");
-  let grandSlam = false, forced = null;
+function career(cfg) {
+  const p = new E.Player(cfg.identity, "T", "求生者");
+  if (cfg.appHigh) p.appearance = E.rnd(80, 100);
+  let grand = false, forced = null, completed = 0;
   try {
-    for (let year = 1; year <= E.CONFIG.YEARS; year++) {
-      p._year = year;
-      p.has_wrist = false; p.negative_news = false;
-      const yc = new Set();
-      let summerRank = 8, autumnRank = 8;
-      autoTrainPeriod(p, (identity === "青训" && year === 1) ? 7 : 5, year);
-      if (autoSelection(p, year)) {
-        const reg = autoRegular(p, year);
-        if (reg.inPlayoff) { const r = autoKnockout(p, "季后", year, E.OPP_POP["季后"], E.WIN_POP["季后"]); summerRank = r.place; settle(p, "夏", r); if (r.champ) yc.add("夏"); }
-      }
-      if (summerRank <= 2 && p.is_starter) { const r = autoKnockout(p, "IVS", year, E.OPP_POP["IVS"], E.WIN_POP["IVS"]); settle(p, "IVS", r); if (r.champ) yc.add("IVS"); }
-      autoTrainPeriod(p, 5, year);
-      if (autoSelection(p, year)) {
-        const reg = autoRegular(p, year);
-        if (reg.inPlayoff) { const r = autoKnockout(p, "季后", year, E.OPP_POP["季后"], E.WIN_POP["季后"]); autumnRank = r.place; settle(p, "秋", r); if (r.champ) yc.add("秋"); }
-      }
-      autoTrainPeriod(p, 5, year);
-      if (autoSelection(p, year)) {
-        const seeded = (summerRank + autumnRank) / 2 <= 2.0;
-        let pass = true;
-        if (!seeded) { let w = 0; for (let g = 0; g < 2; g++) if (autoGame(p, "预选", year, E.OPP_POP["深渊"], E.WIN_POP["预选"]).win) w++; pass = w >= 1; }
-        if (pass) {
-          let wg = 0; for (let g = 0; g < 3; g++) if (autoGame(p, "小组", year, E.OPP_POP["深渊"], E.WIN_POP["小组"]).win) wg++;
-          if (wg >= 2) { const r = autoKnockout(p, "总决", year, E.OPP_POP["深渊"], E.WIN_POP["总决"]); settle(p, "深渊", r); if (r.champ) yc.add("深渊"); }
-        }
-      }
-      if (["夏", "秋", "IVS", "深渊"].every(k => yc.has(k))) grandSlam = true;
-      const trigs = E.specialTriggers(p, year);
-      for (const name of trigs) { if (!p.offered.has(name)) { p.offered.add(name); /* auto: decline */ } }
+    for (let year = 1; year <= 7; year++) {
+      const age = 18 + year - 1; p.cur_year = year; p.year_f = [];
+      p.negative_news = false;
+      shop(p, cfg);
+      p.rest_active = cfg.rest && !(p.identity === "青训" && year === 1) && E.commercialRestEligible(p);
+      p.rest_growth_mult = p.rest_active ? E.CONFIG.REST_GROWTH_MULT : 1.0;
+      const yc = new Set(); let sr = 8, ar = 8;
+      const n1 = (p.identity === "青训" && year === 1) ? 7 : (p.rest_active ? 3 : 5);
+      autoTrainPeriod(p, n1, year, age, cfg.attrs, cfg.intensity, cfg.attendPop);
+      if (sel(p, year)) { const c = p.champ["夏"]; sr = domestic(p, "夏", year, age); if (p.champ["夏"] > c) yc.add("夏"); }
+      if (E.transferRollForced(p) === "sell") E.doTransfer(p); E.transferAmbient(p);
+      if (sr <= 2 && p.is_starter) { const c = p.champ["IVS"]; ivs(p, year, age); if (p.champ["IVS"] > c) yc.add("IVS"); }
+      autoTrainPeriod(p, p.rest_active ? 3 : 5, year, age, cfg.attrs, cfg.intensity, cfg.attendPop);
+      if (sel(p, year)) { const c = p.champ["秋"]; ar = domestic(p, "秋", year, age); if (p.champ["秋"] > c) yc.add("秋"); }
+      autoTrainPeriod(p, p.rest_active ? 3 : 5, year, age, cfg.attrs, cfg.intensity, cfg.attendPop);
+      if (sel(p, year)) { const seeded = (sr + ar) / 2 <= 2; p._abyss_fatigue = E.CONFIG.ABYSS_SYNC_FATIGUE * yc.size; const c = p.champ["深渊"]; abyss(p, year, age, seeded); p._abyss_fatigue = 0; if (p.champ["深渊"] > c) yc.add("深渊"); }
+      if (["夏", "秋", "IVS", "深渊"].every(k => yc.has(k))) grand = true;
+      E.transferAmbient(p); E.annualAwards(p, year);
+      if (p.rest_active) { p.addPop(E.rnd(...E.CONFIG.REST_POP_RANGE)); p.rest_year_count += 1; }
+      if (p.teno_active && p.teno_onset_year !== null && (year - p.teno_onset_year) >= 1) throw { forced: "伤重退役" };
+      completed = year;
     }
   } catch (e) { if (e && e.forced) forced = e.forced; else throw e; }
-  const ending = E.finalEnding(p, grandSlam, forced);
-  return { ending, champ: p.totalChamp, fmvp: p.fmvp_total, pop: p.pop, tech: p.tech, tac: p.tac, phys: p.phys, stab: p.stab };
+  const full = (forced === null) && completed === 7;
+  const ach = E.computeAchievements(p, full, grand, forced);
+  const final = E.finalEnding(p, full, grand, forced, ach);
+  return { final, total: p.totalChamp, abyssChamp: p.champ["深渊"], grand, forced, p };
 }
 
-/* ------------------------------- 主程序 -------------------------------- */
-const N = parseInt(process.argv[2] || "5000", 10);
-const ids = ["青训", "主播", "人皇"];
-for (const id of ids) {
-  const endings = {}; let champSum = 0, fmvpSum = 0, popSum = 0;
-  const at = { tech: 0, tac: 0, phys: 0, stab: 0 };
+const POLICIES = {
+  "普通养成": { identity: "青训", attrs: [["单练", "tech"], ["团队训练", "tac"], ["体能训练", "phys"], ["直播排位", "stab"]], intensity: "正常", therapy: true },
+  "重点养成": { identity: "青训", attrs: [["单练", "tech"], ["团队训练", "tac"]], intensity: "高强度", shop: true, wrist: true, shopItems: ["营养师", "稳态书"], therapy: true },
+  "极限养成": { identity: "人皇", attrs: [["单练", "tech"], ["团队训练", "tac"], ["体能训练", "phys"]], intensity: "高强度", shop: true, wrist: true, shopItems: ["营养师", "单练机会", "复盘机会", "稳态书", "私人陪练"], therapy: true },
+  "颜值流量": { identity: "主播", appHigh: true, attendPop: true, attrs: [["体能训练", "phys"], ["直播排位", "stab"]], intensity: "正常", rest: true, shop: true, wrist: true, checkup: true, shopItems: [], therapy: true },
+};
+
+const N = parseInt(process.argv[2] || "8000", 10);
+console.log(`冲烟测试 v2.3 · 每档 N=${N}`);
+for (const [name, cfg] of Object.entries(POLICIES)) {
+  let anyChamp = 0, ab = 0, grand = 0, retired = 0, benched = 0, fired = 0; const finals = {}; const attr = [0, 0, 0, 0]; let pf = 0;
   for (let i = 0; i < N; i++) {
-    const r = runCareer(id);
-    endings[r.ending] = (endings[r.ending] || 0) + 1;
-    champSum += r.champ; fmvpSum += r.fmvp; popSum += r.pop;
-    at.tech += r.tech; at.tac += r.tac; at.phys += r.phys; at.stab += r.stab;
+    const r = career(cfg);
+    if (r.total >= 1) anyChamp++;
+    if (r.abyssChamp >= 1) ab++;
+    if (r.grand) grand++;
+    if (r.forced === "伤重退役") retired++;
+    if (r.forced === "饮水机管理员") benched++;
+    if (r.forced === "你被开除了！") fired++;
+    finals[r.final] = (finals[r.final] || 0) + 1;
+    attr[0] += r.p.tech; attr[1] += r.p.tac; attr[2] += r.p.phys; attr[3] += r.p.stab;
+    pf += r.p.playoff_count;
   }
-  console.log(`\n=== 身份：${id}  (N=${N}) ===`);
-  console.log(`平均冠军 ${(champSum / N).toFixed(2)} · 平均FMVP ${(fmvpSum / N).toFixed(2)} · 平均人气 ${(popSum / N).toFixed(1)}万`);
-  console.log(`平均属性 技${(at.tech / N).toFixed(1)} 战${(at.tac / N).toFixed(1)} 体${(at.phys / N).toFixed(1)} 稳${(at.stab / N).toFixed(1)}`);
-  console.log("结局分布：");
-  Object.entries(endings).sort((a, b) => b[1] - a[1]).forEach(([k, v]) => console.log(`  ${k.padEnd(8, "　")} ${(v / N * 100).toFixed(1)}%  (${v})`));
+  const pc = x => (100 * x / N).toFixed(1) + "%";
+  console.log(`\n[${name}] 技/战/体/稳=${attr.map(a => (a / N).toFixed(0)).join("/")}  进季后均=${(pf / N).toFixed(2)}`);
+  console.log(`  任意冠=${pc(anyChamp)}  全球冠=${pc(ab)}  金满贯=${pc(grand)}  伤重退役=${pc(retired)}  饮水机=${pc(benched)}  被开除=${pc(fired)}`);
+  console.log(`  结局Top:`, Object.fromEntries(Object.entries(finals).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => [k, pc(v)])));
 }
+console.log("\n对照《回归报告v2.3》：普通任意冠~中、极限全球冠较高、颜值流量伤重退役应被压低(≤~35%)、中层满役结局承接普通周目。");

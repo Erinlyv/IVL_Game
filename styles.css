@@ -190,6 +190,37 @@ body {
 .toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%) translateY(20px); background: #20283a; border: 1px solid var(--accent); color: #fff; padding: 11px 20px; border-radius: 10px; font-size: 14px; opacity: 0; pointer-events: none; transition: .25s; z-index: 50; box-shadow: 0 8px 30px rgba(0,0,0,.4); }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+/* ===================== v2.3 新增样式 ===================== */
+.db.rest { background: rgba(167,139,250,.16); color: var(--accent2); border-color: rgba(167,139,250,.35); }
+.sub2 { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+.speech { color: var(--gold); font-style: italic; font-size: 14px; margin-top: 6px; }
+
+/* 赛季目标面板 */
+.goals { display: grid; grid-template-columns: 1fr; gap: 10px; margin: 6px 0 14px; }
+.goal { background: var(--bg2); border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: 10px; padding: 11px 14px; }
+.goal p { margin: 0; font-size: 14px; }
+.goal-t { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 20px; margin-bottom: 6px; }
+.goal.g-comp { border-left-color: var(--accent); }
+.goal.g-comp .goal-t { background: rgba(91,157,255,.16); color: var(--accent); }
+.goal.g-grow { border-left-color: var(--good); }
+.goal.g-grow .goal-t { background: rgba(57,217,138,.16); color: var(--good); }
+.goal.g-risk { border-left-color: var(--warn); }
+.goal.g-risk .goal-t { background: rgba(255,180,84,.16); color: var(--warn); }
+
+/* 伤病风险预警条 */
+.riskbar { font-size: 13px; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; border: 1px solid var(--warn); background: rgba(255,180,84,.1); color: #f4d6a6; }
+.riskbar.ko { border-color: var(--bad); background: rgba(255,92,92,.12); color: #f6bcbc; }
+.riskbar b { color: #fff; }
+
+/* 赛后因果解释 */
+.reason { font-style: italic; color: var(--accent2); border-left: 3px solid var(--accent2); background: rgba(167,139,250,.08); padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 14px; }
+
+/* 商店分组 + 推荐标签 */
+.shopgroup { margin-bottom: 14px; }
+.sg-title { font-size: 12px; color: var(--accent); font-weight: 700; margin: 4px 0 7px; letter-spacing: .5px; }
+.si-main { min-width: 0; }
+.si-tag { font-size: 11px; color: var(--accent2); margin: 2px 0; }
+
 /* 滚动条 */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 6px; }
