@@ -1,8 +1,14 @@
 /* =============================================================================
- * IVL 模拟器 · 交互编排 + UI (game.js) · 垂直可玩切片 demo-v2.1
+ * IVL 模拟器 · 交互编排 + UI (game.js) · 垂直可玩切片 demo-v2.2
  * 把已回归引擎(engine.js)的"自动决策"换成玩家点击：角色创建 → 7 赛年
  * (赛季目标面板 / 训练 / 突发事件 / 商店 / 双败季后赛 / IVS / 深渊含季军赛 /
  *  转会 / 年度评选 / 商业休整) → v6.3 结局成就。
+ *
+ * v2.2 新增（对齐《策划案 v6.4》/《数值设计 v5.3》/《文案设计 v1.2》）：
+ *   · 商店刷新：常驻基础 + 9 抽 5 常规 + 8% 命中稀缺抽 1（后悔药 / 庄园密信 / 骨龄逆转血清）；
+ *   · 比赛随机浮动改玩家手动掷骰（仅季后赛 / 深渊总决赛），6 档发挥反馈，区间 / 分布不变；
+ *   · 后悔药重打 / 庄园密信抵消同步疲劳 / 血清抹平年龄衰减；
+ *   · 商业休整门槛收紧（容貌>60 且 赛年≥4）；生涯回顾称号修复（监管者→屠皇）。
  *
  * 依据《demo v2.3 feedback》整改：
  *   ① 运气为完全隐藏数值，UI 不显示"运气"这一栏、全程不提及、结局也不揭晓；
@@ -15,6 +21,12 @@
  * ===========================================================================*/
 const E = window.IVL;
 const $ = (sel) => document.querySelector(sel);
+
+/* 称号显示口径（v6.4 / v1.2 修复）：严格按定位取值——求生者→「人皇」、监管者→「屠皇」，
+ * 不再出现"监管者在生涯回顾中被误显示为人皇"的串号 bug。 */
+function kingTitle(role) { return role === "监管者" ? "屠皇" : "人皇"; }
+// 生涯回顾 / 结局界面的身份短名：榜前身份按定位取人皇/屠皇，其余按引擎身份原样。
+function idShort(p) { return p.identity === "人皇" ? kingTitle(p.role) : p.identity; }
 
 let P = null;
 let curYear = 1, curAge = 18;
@@ -86,14 +98,17 @@ function renderHUD() {
   if (P.rest_active) debuffs.push(`<span class="db rest">商业休整</span>`);
   if (P.has_wrist) debuffs.push(`<span class="db buff">护腕</span>`);
   if (P.has_checkup) debuffs.push(`<span class="db buff">体检</span>`);
+  if (P.redo_token > 0) debuffs.push(`<span class="db rare">后悔药×${P.redo_token}</span>`);
+  if (P.has_seal) debuffs.push(`<span class="db rare">庄园密信</span>`);
+  if (P.serum_active) debuffs.push(`<span class="db rare">逆龄血清</span>`);
   if (P.nextGameBuff) debuffs.push(`<span class="db buff">下场F+${P.nextGameBuff.toFixed(0)}</span>`);
 
   h.innerHTML = `
     <div class="hud-id">
       <div class="avatar">${(P.name || "?").slice(0, 1)}</div>
       <div>
-        <div class="pname">${P.name} <span class="pos">${P.role}${P.role === "监管者" ? "·屠皇" : ""}</span></div>
-        <div class="pmeta">${P.identity} · ${curAge}岁 · 赛年 ${curYear}/7</div>
+        <div class="pname">${P.name} <span class="pos">${P.role}${P.identity === "人皇" ? "·" + kingTitle(P.role) : ""}</span></div>
+        <div class="pmeta">${idShort(P)} · ${curAge}岁 · 赛年 ${curYear}/7</div>
         <div class="pstage">阶段：${curStage}</div>
       </div>
     </div>
@@ -369,31 +384,41 @@ async function trainingEvent() {
 /* ============================== 商店 ================================== */
 async function shopPhase() {
   setStage("年度商店");
+  // 当年生效的道具/稀缺效果于赛年开始（进商店）随库存刷新一并重置（道具不跨年）。
   P.has_wrist = false;
   P.has_checkup = false;
-  const stock = E.SHOP_ITEMS.map(it => ({ ...it, left: it.qty }));
-  const groups = ["体力恢复", "伤病防护", "临场爆发", "属性成长", "舆论处理"];
+  P.redo_token = 0;
+  P.has_seal = false;
+  P.serum_active = false;
+  // v6.4 / v5.3 §9.0：常驻基础 + 9 抽 5 常规 + 8% 命中稀缺抽 1。
+  const stock = E.buildShopStock();
+  const hasRare = stock.some(it => it.rare);
+  const groups = ["体力恢复", "伤病防护", "临场爆发", "属性成长", "舆论处理", "极其稀缺"];
   const risk = injuryRiskLine();
   await new Promise((resolve) => {
     const render = () => {
       const sections = groups.map(g => {
-        const rows = stock.filter(it => it.group === g).map((it) => {
+        const items = stock.filter(it => it.group === g);
+        if (!items.length) return "";
+        const rare = g === "极其稀缺";
+        const rows = items.map((it) => {
           const gi = stock.indexOf(it);
           const afford = P.money >= it.price && it.left > 0;
           const sold = it.left <= 0;
-          return `<div class="shoprow ${sold ? "sold" : ""}">
-            <div class="si-main"><div class="si-name">${it.name}</div><div class="si-tag">${it.tag}</div><div class="si-desc">${it.desc}</div></div>
+          return `<div class="shoprow ${rare ? "rare" : ""} ${sold ? "sold" : ""}">
+            <div class="si-main"><div class="si-name">${rare ? `<span class="si-rarebadge">限定</span>` : ""}${it.name}</div><div class="si-tag">${it.tag}</div><div class="si-desc">${it.desc}</div></div>
             <div class="si-price">${it.price}G</div><div class="si-left">×${it.left}</div>
             <button class="si-buy" data-i="${gi}" ${afford ? "" : "disabled"}>${sold ? "售罄" : "购买"}</button>
           </div>`;
         }).join("");
-        return `<div class="shopgroup"><div class="sg-title">${g}</div>${rows}</div>`;
+        return `<div class="shopgroup ${rare ? "rare" : ""}"><div class="sg-title">${rare ? "✦ 极其稀缺（限定爆品）" : g}</div>${rows}</div>`;
       }).join("");
       main().innerHTML = `
         <div class="panel-head"><h2>赛年 ${curYear} · 年度商店</h2>
-          <p class="sub">资金 <b>${P.money.toFixed(0)} G</b>。属性类立即生效且不受年龄衰减；消耗品进背包随时使用；护腕/体检当年生效且可叠加。</p></div>
+          <p class="sub">资金 <b>${P.money.toFixed(0)} G</b>。每年随机上架，常规 9 件抽 5；属性类立即生效且不受年龄衰减；消耗品进背包随时使用；护腕/体检当年生效且可叠加。</p></div>
         <div class="panel-body">
           ${risk ? `<div class="riskbar ${risk.level === "high" ? "ko" : "warn"}">⚠ 伤病风险预警：${risk.text}</div>` : ""}
+          ${hasRare ? `<div class="rarebar">✦ 今年货架上出现了<b>极其稀缺商品</b>——8% 概率才会现身，错过要等下一年。</div>` : ""}
           <div class="shop">${sections}</div></div>
         <div class="choices"><button class="choice primary" id="shopDone"><span class="cl">采购完毕，进入训练</span></button></div>`;
       main().querySelectorAll(".si-buy:not([disabled])").forEach(b => { b.onclick = () => buy(stock[+b.dataset.i], render); });
@@ -411,6 +436,9 @@ function buy(it, render) {
   } else if (it.kind === "wrist") { P.has_wrist = true; flash("购买护腕：本年受伤概率 ×0.4"); }
   else if (it.kind === "checkup") { P.has_checkup = true; flash("经纪团队体检：本年受伤概率 ×0.4（可叠加护腕）"); }
   else if (it.kind === "clear") { P.negative_news = false; flash("公关出手：负面新闻已清除"); }
+  else if (it.kind === "redo") { P.redo_token += 1; flash("后悔药入手：本赛年可重打一场失利"); }
+  else if (it.kind === "seal") { P.has_seal = true; flash("庄园密信入手：本年深渊抵消一次同步疲劳"); }
+  else if (it.kind === "serum") { P.serum_active = true; flash("骨龄逆转血清生效：本赛年抹平年龄衰减"); }
   else if (it.kind === "consume") { P.inv[it.name] = (P.inv[it.name] || 0) + 1; flash(`购入${it.name}，已进背包`); }
   renderHUD(); render();
   pushLog(`商店购买：${it.name}（−${it.price}G）`);
@@ -418,6 +446,44 @@ function buy(it, render) {
 
 /* ============================== 比赛 ================================== */
 // 打一场，处理交互事件 + 赛后因果，返回 {win,F,team,opp,line,eventNarr,reason,fainted}
+// 单面骰字形（按发挥档 1-6 取点）。
+function diceFace(t) { return "⚀⚁⚂⚃⚄⚅"[clamp(t, 1, 6) - 1] || "⚅"; }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+/* 手动掷骰（v6.4 / v5.3 §六.2）：仅季后赛 / 深渊总决赛触发。玩家点「该你上场了！」投出本场临场浮动 r∈[−V,+V]，
+ * 区间 / 分布与系统自动取值完全一致；落点按六等分映射成 6 档发挥反馈（纯展示，不二次影响判定）。
+ * 返回掷出的 r（交给 computeF 作为 forcedRfloat）。redo 重打会再次调用本函数，得到全新随机浮动。 */
+async function manualDiceRoll(p, redo) {
+  const V = E.fluctV(p);
+  return await new Promise((resolve) => {
+    main().innerHTML = `
+      <div class="panel-head"><h2>${redo ? "再来一次——该你上场了！" : "该你上场了！"}</h2>
+        <p class="sub">${redo ? "后悔药已下肚，深呼吸，重新投出你今天的手感。" : "深呼吸——这一掷，决定你今天临场的手感。"}</p></div>
+      <div class="panel-body dice-stage">
+        <div class="dice-orb idle" id="diceOrb">🎲</div>
+        <div class="dice-hint">点击下方按钮，投出本场临场状态。</div>
+      </div>
+      <div class="choices"><button class="choice primary" id="rollBtn"><span class="cl">该你上场了！</span><span class="ch">投掷</span></button></div>`;
+    $("#rollBtn").onclick = () => {
+      const r = E.rnd(-V, V);
+      const fb = E.diceTier(r, V);
+      // 立即揭晓结果（投掷悬念交给纯 CSS 入场动画，不依赖 JS 定时器，便于自动化测试稳定推进）。
+      main().innerHTML = `
+        <div class="panel-head"><h2>临场状态 · 第 ${fb.tier} 档</h2>
+          <p class="sub">发挥分档：1–2 失常 / 3–4 稳定 / 5–6 超常</p></div>
+        <div class="panel-body dice-stage">
+          <div class="dice-result reveal tier${fb.tier} grp-${fb.group}">
+            <div class="dice-pips">${diceFace(fb.tier)}</div>
+            <div class="dice-tier">${fb.group} · ${fb.sub}</div>
+            <p class="dice-text">${fb.text}</p>
+          </div>
+        </div>
+        <div class="choices"><button class="choice primary" id="diceGo"><span class="cl">带着这个状态打</span></button></div>`;
+      $("#diceGo").onclick = () => resolve(r);
+    };
+  });
+}
+
 async function playMatch(stage, oppPopBase, winPop, opts = {}) {
   const { oppBonus = 0, dayFirst = false, keyMatch = false } = opts;
   if (dayFirst) { P.stamina = E.matchStartStamina(P); P.fired_events = new Set(); }
@@ -440,9 +506,38 @@ async function playMatch(stage, oppPopBase, winPop, opts = {}) {
 
   const buff = P.nextGameBuff; P.nextGameBuff = 0;
   P.nextGameBuffUsed = buff > 0;
-  const { F, cheer } = E.computeF(P, stage, oppPopBase, curYear, oppBonus, fdelta, buff);
-  const { team, opp, win } = E.settleGame(P, stage, oppPopBase, winPop, curYear, F, fainted, oppBonus);
-  renderHUD();
+  const manual = E.isManualDiceStage(stage) && !fainted;
+
+  // settleGame 会即时改动 pop / money / year_f / injured_win；后悔药重打需先回滚再重算，
+  // 故先快照这些字段，redo 时还原后再跑一次（重打用全新随机浮动，不再扣体力 / 不重触发事件）。
+  const snap = () => ({ pop: P.pop, money: P.money, injured_win: P.injured_win, yfLen: P.year_f.length });
+  const restore = (s) => { P.pop = s.pop; P.money = s.money; P.injured_win = s.injured_win; P.year_f.length = s.yfLen; };
+  const s0 = snap();
+
+  const runAttempt = async (redo) => {
+    const forcedR = manual ? await manualDiceRoll(P, redo) : null;
+    const { F, cheer } = E.computeF(P, stage, oppPopBase, curYear, oppBonus, fdelta, buff, forcedR);
+    const { team, opp, win } = E.settleGame(P, stage, oppPopBase, winPop, curYear, F, fainted, oppBonus);
+    renderHUD();
+    return { F, cheer, team, opp, win };
+  };
+
+  let a = await runAttempt(false);
+  // 后悔药（v6.4 / v5.3 §九·稀缺）：手动掷骰阶段打输且持有重开额度时，可立刻重打一次。
+  if (!a.win && !fainted && P.redo_token > 0 && manual) {
+    const idx = await choose("后悔药 · 要重来一次吗？",
+      `<p class="flavor">输了别急着摔键盘——这一颗后悔药，能让你把刚才那场重新打一遍（全新临场手感，本赛年仅此一次）。</p>
+       <p class="muted">剩余后悔药：${P.redo_token} 颗　·　刚才：你 ${a.F.toFixed(0)} vs 对手 ${a.opp.toFixed(0)}</p>`,
+      [{ label: "吞下后悔药，重打这一场", cls: "primary" }, { label: "算了，接受结果" }]);
+    if (idx === 0) {
+      P.redo_token -= 1;
+      restore(s0);
+      renderHUD();
+      pushLog("后悔药生效：重打这一场。", "good");
+      a = await runAttempt(true);
+    }
+  }
+  const { F, cheer, team, opp, win } = a;
 
   const tags = E.reasonTags(P, { stage, win, keyMatch, F, opp, team, cheer, fainted, year: curYear, age: curAge });
   const reason = E.pickReason(tags, win);
@@ -634,6 +729,17 @@ async function playIVS() {
 
 async function playAbyss(seeded) {
   await competitionInjury("深渊");
+  // 庄园密信（v6.4 / v5.3 §九·稀缺）：进深渊前抵消 1 项金满贯同年同步疲劳（少计 1 冠的 −ABYSS_SYNC_FATIGUE/场）。
+  if (P.has_seal && P._abyss_fatigue > 0) {
+    const before = P._abyss_fatigue;
+    P._abyss_fatigue = Math.max(0, P._abyss_fatigue - E.CONFIG.ABYSS_SYNC_FATIGUE);
+    P.has_seal = false;
+    renderHUD();
+    pushLog(`庄园密信生效：同步疲劳 −${(before - P._abyss_fatigue).toFixed(0)}。`, "good");
+    await say("庄园密信 · 特赦令", `
+      <p class="flavor">横扫赛季的疲惫，由这封密信替你扛下。深渊里，你还是满状态的那个你。</p>
+      <p>同年同步疲劳抵消 1 冠：深渊每场 F 回补 <b>+${(before - P._abyss_fatigue).toFixed(0)}</b>${P._abyss_fatigue > 0 ? `，剩余每场 −${P._abyss_fatigue.toFixed(0)}` : "，本年深渊已无同步疲劳"}。</p>`, "继续");
+  }
   await say("深渊的呼唤 · 全球赛", `
     <p class="flavor">深渊的呼唤——全球最高规格的舞台。能站在这里的，没有一个是弱者。</p>
     <p>${seeded ? "凭借国内季后赛的出色表现，你被<b>保送小组赛</b>，跳过预选！" : "你需要先从预选赛打起（2 场，胜 ≥1 进小组）。"}</p>
@@ -756,7 +862,7 @@ async function transferWindow(label) {
 
 /* ============================ 商业休整 ================================ */
 async function commercialRestOffer() {
-  if (!(P.identity === "青训" && curYear === 1) && E.commercialRestEligible(P)) {
+  if (!(P.identity === "青训" && curYear === 1) && E.commercialRestEligible(P, curYear)) {
     const idx = await choose("人生节奏 · 商业休整", `
       <p class="flavor">经纪人敲门进来：「这赛季的商务排得很满。要不要少练一点，把热度和身体都先稳住？」</p>
       <p class="muted">效果：本赛年训练周期 5→3 次、训练收益 ×0.8、伤病判定概率 ×0.5、赛年结束额外人气 +2~5（×外貌）。帮助你更稳地走向签约艺人/短剧/流量为王等非竞技路线。</p>`,
@@ -916,7 +1022,7 @@ async function ending(grandSlam, forced, fullCareer) {
         <div class="ending-name">${finalName}</div>
         <p class="ending-text">${endingText}</p>
       </div>
-      <h3 class="rv">生涯回顾 · ${P.name}（${P.identity}·${P.role}）</h3>
+      <h3 class="rv">生涯回顾 · ${P.name}（${idShort(P)}·${P.role}）</h3>
       <div class="review">
         <div class="rv-attrs">
           ${rvBar("技术", P.tech, "#f5cf6a")}${rvBar("战术", P.tac, "#6ea8fe")}
@@ -943,13 +1049,15 @@ function rvBar(k, v, c) { return `<div class="rvbar"><span>${k}</span><div class
 
 /* ============================== 启动 ================================== */
 async function boot() {
-  await say("IVL 模拟器 · 可玩切片 demo-v2.1", `
+  await say("IVL 模拟器 · 可玩切片 demo-v2.2", `
     <p>欢迎来到《IVL 模拟器》可玩垂直切片。你将扮演一名《第五人格》职业电竞选手，从青训出道，征战 7 个赛年。</p>
     <ul class="intro">
       <li><b>赛季目标面板</b>：每年三类推荐目标（竞技/养成/风险）为你指路。</li>
       <li><b>训练养成 + 突发事件</b>：选项不预告数值，选完才公布结果（凭直觉抉择）。</li>
       <li><b>伤病系统</b>：临时伤病 / 腱鞘炎 / 伤重退役，靠护腕·体检·理疗·商业休整对抗。</li>
       <li><b>赛事模拟</b>：夏/秋季赛<b>双败季后赛</b>、IVS、深渊全球赛（含<b>季军赛</b>），赛后一句话因果解释。</li>
+      <li><b>年度商店（v2.2）</b>：每年随机上架，常规 9 件抽 5，<b>8% 概率</b>现身后悔药 / 庄园密信 / 骨龄逆转血清等限定爆品。</li>
+      <li><b>该你上场了！（v2.2）</b>：季后赛 / 深渊总决赛由你<b>亲手投出</b>临场状态，六档发挥即时反馈。</li>
       <li><b>转会 / 年度评选 / 商业休整</b>，以及从「饮水机管理员」到「时代丰碑」的 v6.3 结局成就。</li>
     </ul>
     <p class="muted">数值与已回归的蒙特卡洛引擎 v2.3 同源。</p>`, "创建角色");

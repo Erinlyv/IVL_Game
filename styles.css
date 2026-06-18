@@ -1,5 +1,5 @@
 /* =============================================================================
- * IVL 模拟器 · 样式 demo-v2.1
+ * IVL 模拟器 · 样式 demo-v2.2
  * 设计语言：「电竞转播 × 选手生涯档案」——藏蓝 + 暗金，日常克制、高光时刻燃。
  * 参照 demo6（选手纪录片的交互版）：平时冷静、有重量，只在该热的那几秒热。
  * 字体：Sora（展示/标题）+ Noto Sans SC（正文）。
@@ -277,6 +277,44 @@ body {
 .si-buy:hover:not(:disabled) { filter: brightness(1.06); }
 .si-buy:focus-visible { outline: 2px solid var(--gold2); outline-offset: 2px; }
 .si-buy:disabled { background: var(--line2); color: var(--dim); cursor: not-allowed; }
+
+/* 极其稀缺商品（v6.4 / v5.3 §九）：沿用暗金主色，仅以更强的金辉 + 限定徽标做区隔，风格一致。 */
+.rarebar { font-size: 13px; border-radius: var(--r-sm); padding: 11px 15px; margin-bottom: 14px; line-height: 1.6;
+  border: 1px solid rgba(245, 207, 106, .5); color: var(--gold2);
+  background: linear-gradient(120deg, rgba(245, 207, 106, .14), rgba(226, 181, 62, .05)); }
+.rarebar b { color: #fff; }
+.shopgroup.rare .sg-title { color: var(--gold2); text-shadow: 0 0 14px rgba(245, 207, 106, .45); }
+.shoprow.rare { border-color: rgba(245, 207, 106, .55);
+  background: linear-gradient(120deg, rgba(245, 207, 106, .1), var(--bg2) 60%);
+  box-shadow: 0 0 0 1px rgba(245, 207, 106, .12), 0 10px 26px rgba(226, 181, 62, .14); }
+.shoprow.rare .si-name { color: var(--gold2); }
+.si-rarebadge { display: inline-block; font-family: "Sora", sans-serif; font-size: 9.5px; font-weight: 800;
+  letter-spacing: 1px; padding: 1px 7px; margin-right: 7px; border-radius: 999px; vertical-align: middle;
+  color: #1a1205; background: linear-gradient(135deg, var(--gold2), var(--gold)); }
+.db.rare { background: linear-gradient(135deg, rgba(245, 207, 106, .2), rgba(226, 181, 62, .1));
+  color: var(--gold2); border-color: rgba(245, 207, 106, .42); }
+
+/* ---------------------- 手动掷骰 · 该你上场了！ ---------------------- */
+.dice-stage { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 26px 10px 14px; text-align: center; }
+.dice-orb { font-size: 72px; line-height: 1; filter: drop-shadow(0 8px 22px rgba(110, 168, 254, .35)); }
+.dice-orb.idle { animation: diceBob 2.4s ease-in-out infinite; }
+@keyframes diceBob { 0%, 100% { transform: translateY(0) rotate(-6deg); } 50% { transform: translateY(-8px) rotate(6deg); } }
+.dice-hint { font-size: 13px; color: var(--muted); }
+.dice-result { width: 100%; max-width: 460px; border-radius: var(--r-md); padding: 22px 20px;
+  border: 1px solid var(--line2); background: var(--bg2); }
+.dice-result.reveal { animation: diceReveal .5s cubic-bezier(.2, .9, .3, 1.1) both; }
+.dice-result.reveal .dice-pips { animation: dicePop .55s cubic-bezier(.2, .9, .3, 1.2) both; }
+@keyframes diceReveal { 0% { opacity: 0; transform: translateY(10px) scale(.96); } 100% { opacity: 1; transform: none; } }
+@keyframes dicePop { 0% { transform: rotate(-90deg) scale(.4); opacity: 0; } 60% { transform: rotate(8deg) scale(1.15); opacity: 1; } 100% { transform: none; } }
+.dice-pips { font-size: 64px; line-height: 1; margin-bottom: 8px; }
+.dice-tier { font-family: "Sora", sans-serif; font-size: 15px; font-weight: 800; letter-spacing: 1px; margin-bottom: 10px; }
+.dice-text { font-size: 14px; color: var(--fg); line-height: 1.8; margin: 0; }
+.dice-result.grp-失常 { border-color: rgba(244, 114, 114, .45); background: linear-gradient(150deg, rgba(244, 114, 114, .12), var(--bg2) 60%); }
+.dice-result.grp-失常 .dice-tier, .dice-result.grp-失常 .dice-pips { color: var(--bad); }
+.dice-result.grp-稳定 { border-color: rgba(110, 168, 254, .45); background: linear-gradient(150deg, rgba(110, 168, 254, .12), var(--bg2) 60%); }
+.dice-result.grp-稳定 .dice-tier, .dice-result.grp-稳定 .dice-pips { color: var(--azure); }
+.dice-result.grp-超常 { border-color: rgba(245, 207, 106, .5); background: linear-gradient(150deg, rgba(245, 207, 106, .14), var(--bg2) 60%); }
+.dice-result.grp-超常 .dice-tier, .dice-result.grp-超常 .dice-pips { color: var(--gold2); text-shadow: 0 0 16px rgba(245, 207, 106, .5); }
 
 /* ------------------------------- 比赛日志 ------------------------------- */
 .gamelog { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }

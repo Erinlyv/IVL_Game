@@ -1,13 +1,23 @@
 /* =============================================================================
- * IVL 模拟器 · 引擎 (engine.js) · 垂直可玩切片 demo-v2.1
- * 严格移植自《测试脚本/montecarlo_ivl.py》v2.3（对齐《测试版 v2.3》/《数值设计 v5.2》/
- * 《策划案 v6.3》/《文案设计 v1.1》）。把脚本里的"策略自动决策"替换为玩家点击，
+ * IVL 模拟器 · 引擎 (engine.js) · 垂直可玩切片 demo-v2.2
+ * 严格移植自《测试脚本/montecarlo_ivl.py》（对齐《数值设计 v5.3》/
+ * 《策划案 v6.4》/《文案设计 v1.2》）。把脚本里的"策略自动决策"替换为玩家点击，
  * 数值 / 公式逐项保持一致，使 demo 手感与已回归的平衡同源。
  *
- * v2.3 新增（相对 demo v1.2）：双败季后赛 / 深渊季军赛 / 完整伤病系统（临时 + 腱鞘炎 +
- * 伤重退役）/ 转会 / 年度评选 / 商业休整 / 经纪团队体检 / 中层满役结局三档 /
- * 赛季目标面板 / 赛后因果解释 reasonTags / 伤病风险预警 / 商店推荐标签 / v6.3 结局成就。
- * feedback15：运气为完全隐藏数值；突发事件选项不预显数值，选完才公布。
+ * v2.2 新增（相对 demo v2.1 / 对齐 v6.4·v5.3·v1.2）：
+ *   ① 商店刷新规则：常规 9 件（属性成长 5 + 临场爆发 3 + 舆论处理 1）每次随机抽 5 上架、
+ *      种类不重复；体力恢复 / 伤病防护常驻；新增 3 件「极其稀缺商品」（后悔药 / 庄园密信 /
+ *      骨龄逆转血清）—— 8% 概率命中、命中后从 3 件抽 1 上架、定价昂贵。
+ *   ② 比赛随机浮动改为玩家手动掷骰「该你上场了！」：区间 U[−V,+V]、V=20−稳定×0.15 不变，
+ *      仅交互改为玩家投出 + 6 档发挥反馈（1–2 失常 / 3–4 稳定 / 5–6 超常）；仅季后赛 /
+ *      深渊总决赛（含季军赛）生效，常规赛 / 预选 / 小组 / IVS 仍系统自动取值。
+ *   ③ 商业休整解锁门槛收紧：前置 容貌 > 60 且 赛年 ≥ 4（第 3 赛年之后）。
+ *   ④ 生涯回顾 / 结局称号修复：求生者→人皇、监管者→屠皇（纯展示，不改数值）。
+ *
+ * 继承 v2.1：双败季后赛 / 深渊季军赛 / 完整伤病系统（临时 + 腱鞘炎 + 伤重退役）/ 转会 /
+ * 年度评选 / 商业休整 / 经纪团队体检 / 中层满役结局三档 / 赛季目标面板 / 赛后因果解释
+ * reasonTags / 伤病风险预警 / 商店推荐标签 / 结局成就。运气为完全隐藏数值；突发事件选项
+ * 不预显数值，选完才公布。
  *
  * 本文件只放"纯逻辑 / 数据"（无 DOM）。交互编排在 game.js。
  * ===========================================================================*/
@@ -133,6 +143,45 @@ const SHOP_ITEMS = [
     desc: "立即清除负面新闻 debuff", tag: "别让场外节奏打崩场内状态" },
 ];
 
+/* ---------------------- 极其稀缺商品（v6.4 / v5.3 §9 新增） -------------- *
+ * 刷新时 8% 概率命中，命中后从 3 件中随机抽 1 上架，定价昂贵、限量 1。
+ *  · 后悔药   redo : 本赛年获得 1 次"重开"额度（一场比赛打输后可立刻重打一次）。
+ *  · 庄园密信 seal : 免除一次"金满贯同年同步疲劳"（进深渊前抵消 1 冠的疲劳扣减）。
+ *  · 骨龄逆转血清 serum : 本赛年技术 / 战术 / 体能的年龄成长衰减归零（growthMult 视为 1.00）。
+ * 标签文案严格取自《文案设计 v1.2》§11.6。
+ * --------------------------------------------------------------------- */
+const SHOP_RARE_P = 0.08;
+const SHOP_RARE = [
+  { name: "后悔药", price: 8000, qty: 1, kind: "redo", group: "极其稀缺", rare: true,
+    desc: "本赛年获得 1 次「重开」额度：一场比赛打输后可立刻重打一次",
+    tag: "再给自己一次机会 · 输了别急着摔键盘——这一颗，能让你把那场重新打一遍。" },
+  { name: "庄园密信", price: 6000, qty: 1, kind: "seal", group: "极其稀缺", rare: true,
+    desc: "免除一次「金满贯同年同步疲劳」：进深渊前抵消 1 冠的疲劳扣减",
+    tag: "金满贯路上的特赦令 · 横扫三冠的疲惫，由这封密信替你扛下；深渊里，你还是满状态的那个你。" },
+  { name: "骨龄逆转血清", price: 10000, qty: 1, kind: "serum", group: "极其稀缺", rare: true,
+    desc: "本赛年技术 / 战术 / 体能的年龄成长衰减归零（成长 ×1.00）",
+    tag: "把时间还给你的手 · 年龄追不上你的野心？这一年，技术、战术、体能都当回十八岁来练。" },
+];
+
+/* 商店刷新（v6.4 / v5.3 §9.0）：
+ *  · 体力恢复 + 伤病防护 = 基础保障品类，常驻全部上架；
+ *  · 临场爆发(3) + 属性成长(5) + 舆论处理(1) = 9 件常规池，每次随机抽 5、种类不重复（无放回）；
+ *  · 8% 概率命中稀缺，命中后从 3 件稀缺中随机抽 1 上架。
+ * 返回带 left 库存字段的本年货架。 */
+function buildShopStock() {
+  const inGroup = (g) => SHOP_ITEMS.filter(it => it.group === g);
+  const basics = [...inGroup("体力恢复"), ...inGroup("伤病防护")];
+  const pool9 = [...inGroup("临场爆发"), ...inGroup("属性成长"), ...inGroup("舆论处理")];
+  for (let i = pool9.length - 1; i > 0; i--) {            // Fisher–Yates 洗牌后取前 5（无放回）
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool9[i], pool9[j]] = [pool9[j], pool9[i]];
+  }
+  const picked5 = pool9.slice(0, 5);
+  const stock = [...basics, ...picked5];
+  if (Math.random() < SHOP_RARE_P) stock.push(choiceOf(SHOP_RARE));
+  return stock.map(it => ({ ...it, left: it.qty }));
+}
+
 /* ------------------------------ Player --------------------------------- */
 class Player {
   // 策划案 v6.3 §四：完整选手 ID = 队伍名称_玩家ID（如 MRC_XiaoD）。
@@ -172,6 +221,10 @@ class Player {
     // 道具 / debuff
     this.has_wrist = false;
     this.has_checkup = false;
+    // 极其稀缺商品（当年生效，赛年开始随商店刷新重置）
+    this.redo_token = 0;            // 后悔药：本赛年可重打的失利场数额度
+    this.has_seal = false;          // 庄园密信：本年深渊抵消 1 项金满贯同步疲劳
+    this.serum_active = false;      // 骨龄逆转血清：本赛年抹平技术/战术/体能年龄衰减
     this.negative_news = false;
     this.ever_negative = false;
     this.nextGameBuff = 0;            // 道具临时 F buff，下一场生效后清零
@@ -290,7 +343,9 @@ function applyTraining(p, proj, intensity, year) {
   let [eff, sm] = CONFIG.INTENSITY[intensity];
   eff *= p.rest_growth_mult;
   const t = CONFIG.TRAIN[proj];
-  const gt = growthTech(year), gtc = growthTac(year), gp = growthPhys(year);
+  // 骨龄逆转血清：本赛年技术/战术/体能成长衰减归零（growthMult 视为 1.00）。
+  let gt = growthTech(year), gtc = growthTac(year), gp = growthPhys(year);
+  if (p.serum_active) { gt = 1.0; gtc = 1.0; gp = 1.0; }
   if (t.tech) p.grow("tech", t.tech * eff * gt);
   if (t.tac) p.grow("tac", t.tac * eff * gtc);
   if (t.phys) p.grow("phys", t.phys * eff * gp);
@@ -368,12 +423,52 @@ function rollMatchEvent(p, opts = {}) {
   return null;
 }
 
-// 计算本场 F(吃完事件 fdelta + 道具 buff)
-function computeF(p, stage, oppPopBase, year, oppBonus, fdelta, buff) {
+/* 随机浮动半幅 V（稳定性越高越窄；与 §六.2 完全一致）。 */
+function fluctV(p) { return 20 - p.stab * 0.15; }
+
+/* 手动掷骰生效阶段（v6.4 / v5.3 §六.2）：仅夏/秋季赛季后赛与深渊总决赛（含季军赛）。
+ * 常规赛 / 深渊预选 / 小组 / IVS 仍由系统自动取 r，不弹按钮、不展示反馈分档。 */
+function isManualDiceStage(stage) { return stage === "季后" || stage === "总决"; }
+
+/* 6 档发挥反馈（仅展示层，不二次影响得分）：把 [−V,+V] 六等分，落点 r 取档。
+ * 1–2 失常 / 3–4 稳定 / 5–6 超常；档位越高发挥越好。文案取自《文案设计 v1.2》§5。 */
+const DICE_FEEDBACK = [
+  { tier: 1, group: "失常", sub: "严重失常", pool: [
+    "手感彻底没了。开局连最熟的操作都打变形，像换了个人在打。",
+    "灾难级的一掷——这一场，做好从头打逆风的准备吧。"] },
+  { tier: 2, group: "失常", sub: "状态低迷", pool: [
+    "状态没起来，节奏总慢半拍。今天得多靠脑子、少靠手。",
+    "不太顺，但还没崩。咬住，别让小失误滚成大问题。"] },
+  { tier: 3, group: "稳定", sub: "四平八稳", pool: [
+    "稳，略偏保守。不出彩，但也不轻易给对手机会。",
+    "中规中矩，按部就班——先把基本盘守住。"] },
+  { tier: 4, group: "稳定", sub: "稳健发挥", pool: [
+    "和训练赛里的你一模一样，不飘也不怵。",
+    "状态在线，按自己的节奏走就行。"] },
+  { tier: 5, group: "超常", sub: "渐入佳境", pool: [
+    "手感上来了，越打越顺——这一场有机会咬下来。",
+    "状态比平时更亮，关键回合敢做动作了。"] },
+  { tier: 6, group: "超常", sub: "巅峰爆发", pool: [
+    "手感爆棚！连你自己都有点不敢信今天这状态。",
+    "天选时刻降临——这一场，舞台是你的。"] },
+];
+
+/* 由落点 r 与半幅 V 取档：返回 {tier(1-6), group, sub, text}。 */
+function diceTier(r, V) {
+  const step = (2 * V) / 6 || 1;
+  let idx = Math.floor((r + V) / step);
+  idx = clamp(idx, 0, 5);
+  const d = DICE_FEEDBACK[idx];
+  return { tier: d.tier, group: d.group, sub: d.sub, text: choiceOf(d.pool) };
+}
+
+// 计算本场 F(吃完事件 fdelta + 道具 buff)。
+// forcedRfloat 非空时使用玩家手动掷出的随机浮动（区间/分布不变，仅取值来源不同）。
+function computeF(p, stage, oppPopBase, year, oppBonus, fdelta, buff, forcedRfloat) {
   const cp = p.cp;
   const luckOff = (p.luck - 50) * 0.10;
-  const V = 20 - p.stab * 0.15;
-  const rfloat = rnd(-V, V);
+  const V = fluctV(p);
+  const rfloat = (forcedRfloat === undefined || forcedRfloat === null) ? rnd(-V, V) : forcedRfloat;
   const diff = p.pop - oppPopBase;
   const cheer = diff >= 80 ? 5 : (diff >= 30 ? 3 : 0);
   let inner = cp + luckOff + rfloat + cheer + fdelta + buff;
@@ -382,7 +477,7 @@ function computeF(p, stage, oppPopBase, year, oppBonus, fdelta, buff) {
   if (p.teno_active) inner -= CONFIG.INJ_TENO_F;
   if (p.stamina < 20) inner -= 15;
   if (p.negative_news) inner *= 0.90;
-  return { F: clamp(inner, 0, 100), cheer, luckOff, rfloat };
+  return { F: clamp(inner, 0, 100), cheer, luckOff, rfloat, V };
 }
 
 // 结算一场：返回 {win, team, opp}
@@ -445,8 +540,13 @@ function specialTriggers(p, year) {
   return s;
 }
 
-/* ------------------------- 商业休整解锁判定 ---------------------------- */
-function commercialRestEligible(p) {
+/* ------------------------- 商业休整解锁判定 ---------------------------- *
+ * v6.4 / v5.3 §七.6 收紧：前置门槛 容貌 > 60 且 赛年 ≥ 4（第 3 赛年之后才可触发），
+ * 满足前置后再满足原两条件之一。year 缺省时（旧调用）退化为不限赛年的旧口径以保兼容。
+ * --------------------------------------------------------------------- */
+function commercialRestEligible(p, year) {
+  if (!(p.appearance > 60)) return false;
+  if (year !== undefined && year < 4) return false;
   const noChamp = p.totalChamp === 0;
   const cond1 = p.pop >= 100 && p.appearance >= 70 && p.ev_count >= 5;
   const cond2 = p.tech < 60 && noChamp;
@@ -871,11 +971,12 @@ const TRAIN_EVENT_KEYS = Object.keys(TRAIN_EVENTS);
 
 /* --------------------------- 暴露到全局 -------------------------------- */
 window.IVL = {
-  CONFIG, SHOP_ITEMS, Player, rnd, randint, triangular, gauss, clamp, choiceOf,
+  CONFIG, SHOP_ITEMS, SHOP_RARE, SHOP_RARE_P, buildShopStock, Player, rnd, randint, triangular, gauss, clamp, choiceOf,
   OPP_POP: CONFIG.OPP_POP, WIN_POP: CONFIG.WIN_POP, CHAMP_REWARD: CONFIG.CHAMP_REWARD,
   selectThreshold, npcSelf, growthTech, growthTac, growthPhys, oppDelta, sampleOpp, popThr3,
   applyTraining, tenoProb, rollInjury, healInjury, endCompetition,
   matchStartStamina, gameCost, luckCheck, rollMatchEvent, computeF, settleGame,
+  fluctV, isManualDiceStage, diceTier, DICE_FEEDBACK,
   teammateAvgs, checkFMVP, settleChamp, settleRunnerup, settleThird, maxRunTrue,
   specialTriggers, commercialRestEligible, transferRollForced, doTransfer, transferAmbient,
   annualAwards, reasonTags, pickReason, fmvpSpeech, FMVP_POEMS,

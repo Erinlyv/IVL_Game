@@ -73,6 +73,11 @@ function clickOne() {
   if (buys.length && Math.random() < 0.3) { buys[Math.floor(Math.random() * buys.length)].click(); return true; }
   const shopDone = q("#shopDone");
   if (shopDone) { shopDone.click(); return true; }
+  // 3.5) 手动掷骰（季后赛 / 深渊总决赛）：投掷 → 看反馈 → 带状态打
+  const rollBtn = q("#rollBtn");
+  if (rollBtn && !rollBtn.disabled) { rollBtn.click(); return true; }
+  const diceGo = q("#diceGo");
+  if (diceGo) { diceGo.click(); return true; }
   // 4) 通用选项
   const choices = qa("#choices .choice").filter(b => !b.disabled);
   if (choices.length) {

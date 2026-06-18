@@ -156,7 +156,7 @@ function career(cfg) {
       const age = 18 + year - 1; p.cur_year = year; p.year_f = [];
       p.negative_news = false;
       shop(p, cfg);
-      p.rest_active = cfg.rest && !(p.identity === "青训" && year === 1) && E.commercialRestEligible(p);
+      p.rest_active = cfg.rest && !(p.identity === "青训" && year === 1) && E.commercialRestEligible(p, year);
       p.rest_growth_mult = p.rest_active ? E.CONFIG.REST_GROWTH_MULT : 1.0;
       const yc = new Set(); let sr = 8, ar = 8;
       const n1 = (p.identity === "青训" && year === 1) ? 7 : (p.rest_active ? 3 : 5);
