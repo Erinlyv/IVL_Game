@@ -3,14 +3,24 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>IVL 模拟器 · 可玩切片 第二版 v2.3</title>
+  <title>IVL 模拟器 · 可玩切片 demo-v2.1（文案 v1.1）</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="chargen.css" />
 </head>
 <body>
   <div class="app">
     <header class="topbar">
-      <div class="logo">IVL <span>模拟器</span></div>
-      <div class="tagline">第五人格 · 职业电竞选手生涯模拟 · 可玩垂直切片 第二版 v2.3</div>
+      <div class="brand">
+        <div class="crest">IVL</div>
+        <div class="brandtext">
+          <div class="logo">IVL <span>模拟器</span></div>
+          <div class="ey">PRO PLAYER · CAREER DOSSIER</div>
+        </div>
+      </div>
+      <div class="tagline">第五人格 · 职业电竞选手生涯模拟 · 可玩垂直切片 demo-v2.1</div>
     </header>
 
     <div class="layout">
@@ -30,7 +40,11 @@
 
   <div id="toast" class="toast"></div>
 
+  <!-- demo6 角色创建覆盖层挂载点 -->
+  <div id="cc"></div>
+
   <script src="engine.js"></script>
+  <script src="chargen.js"></script>
   <script src="game.js"></script>
 </body>
 </html>

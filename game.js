@@ -1,11 +1,17 @@
 /* =============================================================================
- * IVL 模拟器 · 交互编排 + UI (game.js) · 垂直可玩切片 第二版 v2.3
- * 把已回归引擎(engine.js v2.3)的"自动决策"换成玩家点击：角色创建 → 7 赛年
+ * IVL 模拟器 · 交互编排 + UI (game.js) · 垂直可玩切片 demo-v2.1
+ * 把已回归引擎(engine.js)的"自动决策"换成玩家点击：角色创建 → 7 赛年
  * (赛季目标面板 / 训练 / 突发事件 / 商店 / 双败季后赛 / IVS / 深渊含季军赛 /
  *  转会 / 年度评选 / 商业休整) → v6.3 结局成就。
  *
- * feedback15：① 运气为完全隐藏数值，全程不展示、结局也不揭晓；
- *            ② 突发事件初始选项不显示任何数值变化，选完才公布结果。
+ * 依据《demo v2.3 feedback》整改：
+ *   ① 运气为完全隐藏数值，UI 不显示"运气"这一栏、全程不提及、结局也不揭晓；
+ *   ② 全部前台文案严格对齐《文案设计 v1.1》（身份介绍 / 选拔 / 目标面板 /
+ *      转会 / 赛事旁白 / 赛后因果 / FMVP 颁奖词 / 商业休整 / 伤病预警 /
+ *      突发状况 / 商店标签 / 年度评选 / 结局成就，结局界面成就仅列名称）；
+ *   ③ 角色创建按《策划案 v6.3》§四：先输入队伍名称、再输入选手 ID，
+ *      完整选手 ID = 队伍名称_玩家ID（如 MRC_XiaoD）；转会后可重新输入队名。
+ * feedback15 沿用：突发事件初始选项不显示数值，选完才公布结果。
  * ===========================================================================*/
 const E = window.IVL;
 const $ = (sel) => document.querySelector(sel);
@@ -71,7 +77,7 @@ function renderHUD() {
   if (!P) { h.innerHTML = ""; return; }
   const stMax = P.stamina_max;
   const stPct = Math.max(0, Math.min(100, (P.stamina / stMax) * 100));
-  const stColor = P.stamina < 20 ? "#ff5c5c" : (P.stamina < 30 ? "#ffb454" : "#39d98a");
+  const stColor = P.stamina < 20 ? "#f47272" : (P.stamina < 30 ? "#e8a24b" : "#4ade80");
   const champs = `夏${P.champ["夏"]} 秋${P.champ["秋"]} IVS${P.champ["IVS"]} 深渊${P.champ["深渊"]}`;
   const debuffs = [];
   if (P.negative_news) debuffs.push(`<span class="db">负面新闻</span>`);
@@ -86,7 +92,7 @@ function renderHUD() {
     <div class="hud-id">
       <div class="avatar">${(P.name || "?").slice(0, 1)}</div>
       <div>
-        <div class="pname">${P.team ? P.team + "_" : ""}${P.name} <span class="pos">${P.role}${P.role === "监管者" ? "·屠皇" : ""}</span></div>
+        <div class="pname">${P.name} <span class="pos">${P.role}${P.role === "监管者" ? "·屠皇" : ""}</span></div>
         <div class="pmeta">${P.identity} · ${curAge}岁 · 赛年 ${curYear}/7</div>
         <div class="pstage">阶段：${curStage}</div>
       </div>
@@ -96,11 +102,11 @@ function renderHUD() {
       <div class="track big"><i style="width:${stPct}%;background:${stColor}"></i></div>
     </div>
     <div class="stats">
-      ${bar("技术", P.tech, "#5b9dff")}
-      ${bar("战术", P.tac, "#a78bfa")}
-      ${bar("体能", P.phys, "#39d98a")}
-      ${bar("稳定", P.stab, "#ffd166")}
-      ${bar("容貌", P.appearance, "#ff7eb6")}
+      ${bar("技术", P.tech, "#f5cf6a")}
+      ${bar("战术", P.tac, "#6ea8fe")}
+      ${bar("体能", P.phys, "#4ade80")}
+      ${bar("稳定", P.stab, "#c4a3f0")}
+      ${bar("容貌", P.appearance, "#f0a6c0")}
     </div>
     <div class="res">
       <div class="resitem"><span>人气</span><b>${P.pop.toFixed(1)} 万</b></div>
@@ -159,127 +165,105 @@ function flash(msg) {
 }
 
 /* ============================ 角色创建 ================================= */
-// 身份介绍语严格取自《文案设计 v1.1》§一；榜前人皇/屠皇随定位变化。
-function identityName(idKey, role) {
-  if (idKey === "青训") return "青训选手";
-  if (idKey === "主播") return "人气主播";
-  return role === "监管者" ? "榜前屠皇" : "榜前人皇";
-}
-function identityIntro(idKey, role) {
-  if (idKey === "青训") return "你是俱乐部青训营里摸爬滚打出来的苗子。没有耀眼的天赋，但每一项都不差，教练说你“底子干净”。";
-  if (idKey === "主播") return "出道前你已是圈内小有名气的主播，自带话题与粉丝。镜头感是你的天赋，争议也是。";
-  return role === "监管者"
-    ? "段位榜前几页，常年挂着你的 ID。手中的多个断层 S1 角色，让战队亲自找上了门。"
-    : "段位榜前几页，常年挂着你的 ID。出神入化的遛鬼技术，让战队直接把邀请送到了你面前。";
-}
-const IDENTITY_PERK = {
-  "青训": "开局首个训练周期额外 +2 次训练机会。",
-  "主播": "初始人气、资金较高；首个赛年的队内选拔获得扶持。",
-  "人皇": "初始技术较高，操作天赋型，开局即战力。",
+// 初始身份介绍语严格取自《文案设计 v1.1》第一章；人皇/屠皇随定位变化。
+const IDENTITY_INTRO = {
+  "青训": "你是俱乐部青训营里摸爬滚打出来的苗子。没有耀眼的天赋，但每一项都不差，教练说你「底子干净」。",
+  "主播": "出道前你已是圈内小有名气的主播，自带话题与粉丝。镜头感是你的天赋，争议也是。",
+  "人皇": "段位榜前几页，常年挂着你的 ID。出神入化的遛鬼技术，让战队直接把邀请送到了你面前。",
+  "屠皇": "段位榜前几页，常年挂着你的 ID。手中的多个断层S1角色，让战队亲自找上了门。",
+};
+const IDENTITY_NAME = { "青训": "青训选手", "主播": "人气主播", "人皇": "榜前人皇", "屠皇": "榜前屠皇" };
+const IDENTITY_EFFECT = {
+  "青训": "开局首个训练周期 +2 次训练机会",
+  "主播": "初始人气、资金较高；首年队内选拔获扶持",
+  "人皇": "初始技术较高",
+  "屠皇": "初始技术较高",
 };
 
-async function textInput(step, title, sub, placeholder, maxlen, fallback) {
-  let val = "";
-  await new Promise((resolve) => {
+function textPrompt({ step, sub, inputId, btnId, placeholder, fallback, maxlen = 12, preview }) {
+  return new Promise((resolve) => {
     main().innerHTML = `
-      <div class="panel-head"><h2>${title}</h2><p class="sub">${sub}</p></div>
-      <div class="panel-body"><input id="tInput" class="text-input" maxlength="${maxlen}" placeholder="${placeholder}" /></div>
-      <div class="choices"><button class="choice primary" id="tOk"><span class="cl">下一步</span></button></div>`;
-    const inp = $("#tInput"); inp.focus();
-    const go = () => { val = (inp.value || fallback).trim() || fallback; resolve(); };
-    $("#tOk").onclick = go;
+      <div class="panel-head"><h2>创建角色 · 第 ${step} 步</h2><p class="sub">${sub}</p></div>
+      <div class="panel-body">
+        <input id="${inputId}" class="text-input" maxlength="${maxlen}" placeholder="${placeholder}" />
+        ${preview ? `<div class="idpreview" id="idpreview"></div>` : ""}
+      </div>
+      <div class="choices"><button class="choice primary" id="${btnId}"><span class="cl">下一步</span></button></div>`;
+    const inp = $("#" + inputId); inp.focus();
+    if (preview) {
+      const pv = $("#idpreview");
+      const upd = () => { pv.innerHTML = `完整选手 ID：<b>${preview((inp.value || fallback).trim() || fallback)}</b>`; };
+      upd(); inp.oninput = upd;
+    }
+    const go = () => resolve((inp.value || fallback).trim() || fallback);
+    $("#" + btnId).onclick = go;
     inp.onkeydown = (e) => { if (e.key === "Enter") go(); };
   });
-  return val;
 }
 
 async function characterCreation() {
-  // 第 1 步：输入队伍名称
-  const team = await textInput(1, "创建角色 · 第 1 步", "输入你所属的战队名称（如 MRC）", "例如：MRC、NeoX、影流…", 8, "MRC");
-  // 第 2 步：输入选手 ID
-  const name = await textInput(2, "创建角色 · 第 2 步", `输入你的选手 ID——完整 ID 将登记为 <b>${team}_你的ID</b>`, "例如：XiaoD、影、Knight…", 12, "XiaoD");
-
-  // 第 3 步：选择定位
-  const posIdx = await choose("创建角色 · 第 3 步",
-    `<p>选择定位。<b>仅身份扮演与称号文案，并影响「操作手 / 战队大脑」成就（仅求生者可解锁），不影响比赛胜负判定。</b></p>`,
-    [{ label: "求生者", hint: "灵动走位、绕桩大师的浪漫" }, { label: "监管者", hint: "压迫感拉满，达成称号「屠皇」" }]);
-  const role = posIdx === 0 ? "求生者" : "监管者";
-
-  // 第 4 步：选择初始身份（榜前称号随定位变化）
-  const idKey = ["青训", "主播", "人皇"][await choose("创建角色 · 第 4 步",
-    `<p>选择初始身份，将决定开局裸值与特殊扶持。</p>`,
-    ["青训", "主播", "人皇"].map(k => ({ label: identityName(k, role), hint: identityIntro(k, role) })))];
-
-  // 第 5 步：生成数值，可无限刷新
-  let temp = new E.Player(idKey, name, role);
-  temp.team = team;
-  while (true) {
-    const idx = await present({
-      title: "创建角色 · 第 5 步",
-      sub: "随机生成属性，不满意可无限刷新。容貌全程固定。",
-      body: rollCardHtml(temp),
-      choices: [{ label: "🎲 重新随机", hint: "再赌一把" }, { label: "✓ 确定，开启职业生涯", cls: "primary", hint: "锁定属性" }],
-    });
-    if (idx === 0) { temp = new E.Player(idKey, name, role); temp.team = team; continue; }
-    break;
-  }
-  P = temp;
+  // 角色创建界面完全照搬 demo6「俱乐部签约」四步流程（chargen.js / chargen.css）：
+  // 建档 → 定位 → 身份 → 天赋检定 → 签约完成弹窗。数值仍由引擎 E.Player 生成。
+  const { player } = await window.IVLChargen.run();
+  P = player;
   curYear = 1; curAge = 18;
   renderHUD();
-  await say("出道", `
-    <p class="flavor">${identityIntro(idKey, role)}</p>
-    <p>完整选手 ID：<b>${P.team}_${P.name}</b>　·　${identityName(idKey, role)}　·　定位 ${role}。</p>
-    <p class="muted">${IDENTITY_PERK[idKey]}</p>
-    <p>你以<b>替补</b>身份进入战队，前方是 7 个赛年（18→24 岁）的职业生涯。</p>`, "开始第 1 赛年");
-  pushLog(`${P.team}_${P.name} 出道，定位${role}。`, "good");
+  pushLog(`${P.name} 出道，定位${P.role}。`, "good");
 }
 
 function rollCardHtml(t) {
   const row = (k, v, c) => `<div class="rollrow"><span>${k}</span><div class="rolltrack"><i style="width:${Math.min(100, v)}%;background:${c}"></i></div><b>${v.toFixed(0)}</b></div>`;
   return `<div class="rollcard">
-    ${row("技术", t.tech, "#5b9dff")}
-    ${row("战术", t.tac, "#a78bfa")}
-    ${row("体能", t.phys, "#39d98a")}
-    ${row("稳定", t.stab, "#ffd166")}
-    ${row("容貌", t.appearance, "#ff7eb6")}
+    ${row("技术", t.tech, "#f5cf6a")}
+    ${row("战术", t.tac, "#6ea8fe")}
+    ${row("体能", t.phys, "#4ade80")}
+    ${row("稳定", t.stab, "#c4a3f0")}
+    ${row("容貌", t.appearance, "#f0a6c0")}
     <div class="rollmeta">资金 ${t.money.toFixed(0)} G · 人气 ${t.pop.toFixed(0)} 万 · 体力上限 ${t.stamina_max.toFixed(0)}</div>
   </div>`;
 }
 
 /* ====================== 赛季目标面板 + 伤病风险预警 ===================== */
 // 纯展示层(策划 §15 / feedback15)：竞技 / 养成 / 风险 三类推荐目标。
+// 伤病风险预警文案严格取自《文案设计 v1.1》第九章。
 function injuryRiskLine() {
   const tp = E.tenoProb(P, curAge);
   if (P.teno_active) {
-    const danger = (curYear - (P.teno_onset_year || curYear)) >= 1;
-    return { level: "high", text: danger
-      ? "倒计时已经开始。你可以继续硬撑，但每一场比赛，都在替这只手做最后的赌注。<b class=\"ko\">本赛年末仍未理疗，将触发「伤重退役」。</b>"
-      : "诊断结果没有变：腱鞘炎还在。医生说得很直接——『若到下赛年末仍不理疗，你的职业生涯可能就此画上句号。』" };
+    return { level: "high", text: "诊断结果没有变：腱鞘炎还在。医生说得很直接——「若到下赛年末仍不理疗，你的职业生涯可能就此画上句号。」" };
   }
   if (tp >= 0.08) return { level: "mid", text: "你最近总在结束训练后甩手腕——身体在用最直白的方式提醒你：该添护腕或者安排理疗了。" };
   return null;
 }
+// 赛季目标面板提示语严格取自《文案设计 v1.1》第三章（教练/经理口吻）。
 function seasonGoals() {
   const goals = [];
-  // 竞技目标（文案设计 v1.1 §三.1，按 CP 分档）
+  const ATTR_NAME = { tech: "技术", tac: "战术", phys: "体能", stab: "稳定性" };
+  // 竞技目标（按 CP 分档）
   const cp = P.cp;
-  if (cp < 55) goals.push(["竞技", "教练拍了拍你：『先在轮换里站稳，争取这赛季打进一次季后赛。』"]);
-  else if (cp < 70) goals.push(["竞技", "这赛季的目标很明确——打进夏 / 秋季赛季后赛，让所有人记住你的名字。"]);
-  else if (cp < 82) goals.push(["竞技", "你已经够强了。冲国内冠军，顺手把 IVS 的门票（夏季赛前 2）拿下。"]);
-  else goals.push(["竞技", "经理在战术板上写下两个字：深渊。这一年，向小组出线乃至世界冠军发起冲击。"]);
-  // 养成目标（§三.2，按最短板分档）
-  const attrs = [["技术", P.tech], ["战术", P.tac], ["体能", P.phys], ["稳定", P.stab]];
+  let comp;
+  if (!P.is_starter) comp = "教练拍了拍你：「先在轮换里站稳，争取这赛季打进一次季后赛。」";
+  else if (cp < 55) comp = "教练拍了拍你：「先在轮换里站稳，争取这赛季打进一次季后赛。」";
+  else if (cp < 70) comp = "这赛季的目标很明确——打进夏 / 秋季赛季后赛，让所有人记住你的名字。";
+  else if (cp < 82) comp = "你已经够强了。冲国内冠军，顺手把 IVS 的门票（夏季赛前 2）拿下。";
+  else comp = "经理在战术板上写下两个字：深渊。这一年，向小组出线乃至世界冠军发起冲击。";
+  goals.push(["竞技", comp]);
+  // 养成目标（指向当前最短板）
+  const attrs = [["tech", P.tech], ["tac", P.tac], ["phys", P.phys], ["stab", P.stab]];
   attrs.sort((a, b) => a[1] - b[1]);
-  const lag = attrs[0];
-  if (lag[1] < 60) goals.push(["养成", `复盘会上结论很统一：你的『${lag[0]}』明显拖后腿，这赛季先补到 60 以上。`]);
-  else if (lag[1] < 80) goals.push(["养成", `想和强队主力掰手腕，把『${lag[0]}』补到 80 是这一年的功课。`]);
-  else goals.push(["养成", "框架已经成型，剩下的是细节——用道具和机会把核心项推上 90+。"]);
-  // 风险目标（§三.3，与伤病预警联动）
-  if (P.teno_active) goals.push(["风险", "队医的脸色很难看：『先去理疗。伤重退役的倒计时，已经开始了。』"]);
-  else if (E.tenoProb(P, curAge) >= 0.08) goals.push(["风险", "体检报告递到你手上：手腕负担正在累积，该添副护腕、或者安排一次理疗了。"]);
-  else if (P.negative_news) goals.push(["风险", "公关那边来了消息：舆论还没散，要不要让俱乐部公关帮你处理一下？"]);
-  else if (P.phys < 55) goals.push(["风险", "体能教练提醒你：续航是你的短板，备点柠檬水和筋膜枪，别在长赛程里掉链子。"]);
-  else goals.push(["风险", "队医比了个 OK：身体状态健康，保持节奏就好。"]);
+  const lag = ATTR_NAME[attrs[0][0]];
+  let grow;
+  if (attrs[0][1] < 60) grow = `复盘会上结论很统一：你的「${lag}」明显拖后腿，这赛季先补到 60 以上。`;
+  else if (attrs[0][1] < 80) grow = `想和强队主力掰手腕，把「${lag}」补到 80 是这一年的功课。`;
+  else grow = "框架已经成型，剩下的是细节——用道具和机会把核心项推上 90+。";
+  goals.push(["养成", grow]);
+  // 风险目标（按优先级，文案取自 §3.3）
+  let risk;
+  if (P.teno_active) risk = "队医的脸色很难看：「先去理疗。伤重退役的倒计时，已经开始了。」";
+  else if (E.tenoProb(P, curAge) >= 0.08) risk = "体检报告递到你手上：手腕负担正在累积，该添副护腕、或者安排一次理疗了。";
+  else if (P.phys < 50) risk = "体能教练提醒你：续航是你的短板，备点柠檬水和筋膜枪，别在长赛程里掉链子。";
+  else if (P.negative_news) risk = "公关那边来了消息：舆论还没散，要不要让俱乐部公关帮你处理一下？";
+  else risk = "队医比了个 OK：身体状态健康，保持节奏就好。";
+  goals.push(["风险", risk]);
   return goals;
 }
 async function seasonGoalPanel() {
@@ -326,7 +310,7 @@ function trainingTurn(turn, total) {
   return new Promise((resolve) => {
     main().innerHTML = `
       <div class="panel-head"><h2>训练 · 第 ${turn}/${total} 次</h2>
-        <p class="sub">选择强度与项目。每次训练约 ${(E.CONFIG.TRAIN_EVENT_P * 100).toFixed(0)}% 概率触发突发事件；伤病按整个训练周期判定一次。</p></div>
+        <p class="sub">选择本次训练的强度与项目。</p></div>
       <div class="panel-body">${trainBody()}</div>`;
     const rebind = () => {
       main().querySelectorAll(".intbtn").forEach(b => { b.onclick = () => { curIntensity = b.dataset.int; main().querySelector(".panel-body").innerHTML = trainBody(); rebind(); }; });
@@ -340,6 +324,7 @@ async function trainingPeriod(n, periodLabel) {
   setStage(periodLabel);
   P.stamina = P.stamina_max;
   P.inj_train_mult = 1.0;
+  renderHUD();                 // 进入新训练周期立即把恢复后的体力同步到看板（demov2.1feedback2）
   let trained = false;
   for (let i = 1; i <= n; i++) {
     const before = snapshotAttrs();
@@ -442,7 +427,8 @@ async function playMatch(stage, oppPopBase, winPop, opts = {}) {
   renderHUD();
 
   let fdelta = 0, eventNarr = null;
-  const ev = E.rollMatchEvent(P);
+  // 常规赛：本阶段最多触发一次比赛期事件（demov2.1feedback2）
+  const ev = E.rollMatchEvent(P, { atMostOne: stage === "常规" });
   if (ev) {
     if (ev.needChoice) {
       const idx = await choose(`赛中事件 · ${ev.key}`, `<p class="flavor">${ev.flavor}</p>`,
@@ -486,6 +472,7 @@ function reasonHtml(r) { return r ? `<p class="reason">「${r}」</p>` : ""; }
 async function regularSeason(kind) {
   setStage(`${kind}季赛·常规赛`);
   P.stamina = E.matchStartStamina(P); P.fired_events = new Set();
+  renderHUD();                 // 进入比赛周期即时刷新体力（demov2.1feedback2）
   const lines = []; let wins = 0; let lastReason = null;
   for (let g = 1; g <= 9; g++) {
     const r = await playMatch("常规", E.OPP_POP["常规"], E.WIN_POP["常规"]);
@@ -514,10 +501,13 @@ async function regularSeason(kind) {
  * 返回 {place(1冠/2亚/3季/4/5/6), fList}。
  * --------------------------------------------------------------------- */
 async function playoffGame(kind, dayName, dayFirst, key, fList) {
+  // 新比赛日：先回复体力并刷新看板，再展示备战提示——避免提示与背包显示的是恢复前的旧体力，
+  // 也让玩家在备战界面补给的体力/buff 不被随后的开打重置覆盖（demov2.1feedback2）。
+  if (dayFirst) { P.stamina = E.matchStartStamina(P); P.fired_events = new Set(); renderHUD(); }
   await say(`${kind}季赛·季后赛 · ${dayName}`, `
     <p>${dayName} 即将开打（BO5）。可在右侧背包使用道具补给体力或叠加 F buff。</p>
     <p class="muted">当前体力 ${P.stamina.toFixed(0)} / ${P.stamina_max.toFixed(0)}${P.nextGameBuff ? `，预备 F buff +${P.nextGameBuff.toFixed(0)}` : ""}${key ? "　·　关键场：对手 +2" : ""}</p>`, "开打");
-  const r = await playMatch("季后", E.OPP_POP["季后"], E.WIN_POP["季后"], { dayFirst, keyMatch: key, oppBonus: key ? 2 : 0 });
+  const r = await playMatch("季后", E.OPP_POP["季后"], E.WIN_POP["季后"], { keyMatch: key, oppBonus: key ? 2 : 0 });
   fList.push(r.F);
   pushLog(`${kind}季后赛·${dayName}：${r.win ? "胜" : "负"}`, r.win ? "good" : "bad");
   await say(`${dayName} · 结果`, `<div class="gline ${r.win ? "w" : "l"} big">${r.line}</div>
@@ -527,8 +517,6 @@ async function playoffGame(kind, dayName, dayFirst, key, fList) {
 
 async function playDomesticPlayoff(kind, seed) {
   setStage(`${kind}季赛·双败季后赛`);
-  await say(`${kind}季赛 · 季后赛`, `<p class="flavor">常规赛尘埃落定，真正的淘汰赛才刚刚开始。从这里起，输一场，可能就是一整年的结束。</p>
-    <p class="muted">本赛区采用<b>前 6 进、双败淘汰</b>：常规赛第 1–4 名进胜者组、5–6 名进败者组。你的种子位：第 ${seed} 名。</p>`, "进入双败赛程");
   const fList = [];
   const g = (dayName, dayFirst, key) => playoffGame(kind, dayName, dayFirst, key, fList);
 
@@ -569,13 +557,6 @@ async function playDomesticPlayoff(kind, seed) {
 
 /* ---------------------- 冠军 / 名次结算 + FMVP ------------------------ */
 function titleOf(kind) { return kind === "IVS" ? "IVS" : (kind === "深渊" ? "深渊（全球赛）" : kind + "季赛"); }
-// FMVP 颁奖词：随机取 1 条正文 + 固定结尾句（文案设计 v1.1 §七）
-function fmvpSpeech(kind) {
-  const body = E.choiceOf(E.FMVP_SPEECHES);
-  const year = 2025 + curYear;
-  const tail = `恭喜 ${P.team}_${P.name} 荣获 ${year}${titleOf(kind)}总决赛 FMVP！`;
-  return `${body}<br>${tail}`;
-}
 
 async function settleChampion(kind, fList) {
   const fm = E.checkFMVP(P, curYear, fList);
@@ -584,7 +565,9 @@ async function settleChampion(kind, fList) {
   let body = `<p class="champ-banner">🏆 ${titleOf(kind)}冠军！</p>
     <p>奖励：人气 +${popR}（×外貌系数 ${P.pop_mult.toFixed(2)}）、资金 +${moneyR}G。</p>`;
   if (fm.won) {
-    body += `<p class="fmvp">⭐ 你当选 FMVP！场均 F ${fm.avg.toFixed(1)}，额外 人气+20、资金+1500。</p><p class="speech">${fmvpSpeech(kind)}</p>`;
+    const sp = E.fmvpSpeech(P, kind, curYear);
+    body += `<p class="fmvp">⭐ 你当选 FMVP！场均 F ${fm.avg.toFixed(1)}，额外 人气+20、资金+1500。</p>
+      <p class="speech">${sp.poem}</p><p class="fmvp-credit">${sp.credit}</p>`;
     pushLog(`${titleOf(kind)}夺冠 + FMVP！`, "good");
   } else {
     let why = fm.reason === "low" ? `场均 F ${fm.avg.toFixed(1)} 未达 90 门槛`
@@ -616,6 +599,7 @@ async function playDomestic(kind) {
   const { rank, inPlayoff } = await regularSeason(kind);
   if (!inPlayoff) { E.endCompetition(P); return 8; }
   P.playoff_count += 1;
+  await say(`${kind}季赛 · 季后赛`, `<p class="flavor">常规赛尘埃落定，真正的淘汰赛才刚刚开始。从这里起，输一场，可能就是一整年的结束。</p>`, "进入双败季后赛");
   const { place, fList } = await playDomesticPlayoff(kind, rank);
   P.recent_perf = place === 1 ? 1.0 : 0.5;
   await settlePlacement(kind, place, fList);
@@ -627,6 +611,7 @@ async function playDomestic(kind) {
 async function playSeries(stage, n, oppPopBase, winPop, knockout, label) {
   setStage(label);
   P.stamina = E.matchStartStamina(P); P.fired_events = new Set();
+  renderHUD();                 // 进入比赛周期即时刷新体力（demov2.1feedback2）
   let wins = 0; const fList = []; const lines = []; let lastReason = null;
   for (let g = 1; g <= n; g++) {
     const r = await playMatch(stage, oppPopBase, winPop);
@@ -667,6 +652,7 @@ async function playAbyss(seeded) {
   // 总决赛淘汰：四强 → 半决 → 决赛；半决败者打季军赛
   setStage("深渊·总决赛");
   P.stamina = E.matchStartStamina(P); P.fired_events = new Set();
+  renderHUD();                 // 进入比赛周期即时刷新体力（demov2.1feedback2）
   const fl = [];
   const fg = async (name, key) => {
     await say(`深渊·总决赛 · ${name}`, `<p>${name} 即将开打（BO5）。${key ? "关键场：对手 +2。" : ""}</p><p class="muted">体力 ${P.stamina.toFixed(0)} / ${P.stamina_max.toFixed(0)}</p>`, "开打");
@@ -704,7 +690,7 @@ async function selection(eventLabel) {
   if (score >= thr) {
     P.is_starter = true; P.ever_starter = true; P.consec_fail = 0; renderHUD();
     pushLog(`${eventLabel}：选拔通过，转正主力！`, "good");
-    await say(`${eventLabel} · 队内选拔`, `<p class="flavor">训练中的表现教练都看在眼里。你顺利成为战队首发。</p>`, "上场");
+    await say(`${eventLabel} · 队内选拔`, `<p class="flavor">训练中的表现教练都看在眼里。你顺利成为战队首发。</p><p class="muted">转正主力，此后免选拔。</p>`, "上场");
     return true;
   }
   P.consec_fail += 1; P.ever_fail = true;
@@ -719,10 +705,16 @@ async function selection(eventLabel) {
 }
 
 /* ============================== 转会窗口 ============================== */
-async function renameTeam() {
-  const newTeam = await textInput(0, "转会 · 重新签约", `你加入了新战队，可重新登记队伍名称（选手 ID 不变）。当前完整 ID：<b>${P.team}_${P.name}</b>`, "输入新的战队名称…", 8, P.team);
-  P.team = newTeam; renderHUD();
-  pushLog(`转会完成，完整 ID 更新为 ${P.team}_${P.name}。`, "");
+// 转会后可重新输入一次队伍名称（选手 ID 不变），完整 ID 随之更新（策划 §六.5）。
+async function renameTeamPrompt() {
+  const oldFull = P.name;
+  const newTeam = await textPrompt({
+    step: "转会", sub: `你来到了新的战队，可以重新设定队伍名称（选手 ID「${P.playerId}」保持不变）`,
+    inputId: "teamInput", btnId: "teamOk", placeholder: P.teamName, fallback: P.teamName,
+    preview: (t) => `${t}_${P.playerId}`,
+  });
+  P.renameTeam(newTeam); renderHUD();
+  pushLog(`完整 ID 更新：${oldFull} → ${P.name}`, "");
 }
 
 async function transferWindow(label) {
@@ -730,44 +722,54 @@ async function transferWindow(label) {
   const forced = E.transferRollForced(P);
   let moved = false;
   if (forced === "sell") {
-    E.doTransfer(P); moved = true; renderHUD();
+    E.doTransfer(P); moved = true;
     pushLog(`${label}：被发卖，加入新战队。`, "");
     await say(`转会窗口 · ${label}`, `<p class="flavor">经理把你叫进办公室，话说得委婉，意思却清楚：俱乐部已经替你联系好了下家。这一次，你没有选择权。</p>`, "接受");
-    await renameTeam();
+    await renameTeamPrompt();
   } else if (forced === "offer") {
-    const idx = await choose(`转会窗口 · ${label}`, `<p class="flavor">有别的战队抛来橄榄枝，条件开得很诱人。教练和经理把决定权交回你手上——是留下，还是走？</p>`,
-      [{ label: "留队", hint: "珍惜现有默契，冲击「一人一城」" }, { label: "接受转会", hint: "重新登记队名，队友基准随机变化" }]);
+    const idx = await choose(`转会窗口 · ${label}`,
+      `<p class="flavor">有别的战队抛来橄榄枝，条件开得很诱人。教练和经理把决定权交回你手上——是留下，还是走？</p>`,
+      [{ label: "留队", hint: "珍惜现有默契，冲击「一人一城」" }, { label: "接受转会", hint: "换个环境，队友基准随机变化" }]);
     if (idx === 1) {
-      E.doTransfer(P); moved = true; renderHUD(); pushLog(`${label}：主动转会。`, "");
-      await renameTeam();
+      E.doTransfer(P); moved = true;
+      pushLog(`${label}：主动转会。`, "");
+      await renameTeamPrompt();
     }
   }
-  // 队内其他成员转入/转出 + 其他战队变动（独立于玩家转会）
   const amb = E.transferAmbient(P);
-  const otherChanged = (P.opp_delta_extra !== 0);
   if (!moved) {
     for (const e of amb) {
-      if (e.t === "in") { pushLog(`${label}：新成员试训加入。`, ""); await say(`转会窗口 · ${label} · 试训`, `<p class="flavor">训练室来了张新面孔，是来试训的新人。眼里那股拼劲，让你想起了刚出道时的自己。</p>`, "继续"); }
-      else { pushLog(`${label}：老队友离队。`, ""); await say(`转会窗口 · ${label} · 告别`, `<p class="flavor">一起打了这么久的队友要走了。最后一次合练结束，谁都没急着摘下耳机。</p>`, "继续"); }
+      if (e.t === "in") {
+        pushLog(`${label}：新队友试训加入。`, "");
+        await say(`转会窗口 · ${label}`, `<p class="flavor">训练室来了张新面孔，是来试训的新人。眼里那股拼劲，让你想起了刚出道时的自己。</p>`, "继续");
+      } else {
+        pushLog(`${label}：老队友告别离队。`, "");
+        await say(`转会窗口 · ${label}`, `<p class="flavor">一起打了这么久的队友要走了。最后一次合练结束，谁都没急着摘下耳机。</p>`, "继续");
+      }
     }
-    if (otherChanged) { pushLog(`${label}：其他战队人员变动。`, ""); await say(`转会窗口 · ${label}`, `<p class="flavor">你听说，这个转会期其他战队的人员有所变动。</p>`, "继续"); }
+    if (P.opp_delta_extra !== 0) {
+      pushLog(`${label}：其他战队人员有所变动。`, "");
+      await say(`转会窗口 · ${label}`, `<p class="flavor">你听说，这个转会期其他战队的人员有所变动。</p>`, "继续");
+    }
   }
 }
 
 /* ============================ 商业休整 ================================ */
 async function commercialRestOffer() {
   if (!(P.identity === "青训" && curYear === 1) && E.commercialRestEligible(P)) {
-    const idx = await choose("商业休整", `
-      <p class="flavor">经纪人敲门进来：『这赛季的商务排得很满。要不要少练一点，把热度和身体都先稳住？』</p>
+    const idx = await choose("人生节奏 · 商业休整", `
+      <p class="flavor">经纪人敲门进来：「这赛季的商务排得很满。要不要少练一点，把热度和身体都先稳住？」</p>
       <p class="muted">效果：本赛年训练周期 5→3 次、训练收益 ×0.8、伤病判定概率 ×0.5、赛年结束额外人气 +2~5（×外貌）。帮助你更稳地走向签约艺人/短剧/流量为王等非竞技路线。</p>`,
-      [{ label: "正常备战，专注训练", hint: "训练 5 次、不减伤" }, { label: "答应经纪人，专注商业休整", hint: "训练 3 次、伤病 ×0.5、年末涨粉" }]);
+      [{ label: "正常备战，专注训练", hint: "训练 5 次、不减伤" }, { label: "接受商业休整", hint: "训练 3 次、伤病 ×0.5、年末涨粉" }]);
     P.rest_active = (idx === 1);
-    if (P.rest_active) await say("商业休整", `<p class="flavor">你点了头。这一年，训练室的灯暗了一些，但镜头前的你，比任何时候都亮。</p>`, "继续");
   } else {
     P.rest_active = false;
   }
   P.rest_growth_mult = P.rest_active ? E.CONFIG.REST_GROWTH_MULT : 1.0;
-  if (P.rest_active) pushLog(`赛年 ${curYear}：选择商业休整。`, "");
+  if (P.rest_active) {
+    pushLog(`赛年 ${curYear}：选择商业休整。`, "");
+    await say("商业休整", `<p class="flavor">你点了头。这一年，训练室的灯暗了一些，但镜头前的你，比任何时候都亮。</p>`, "继续");
+  }
   renderHUD();
 }
 
@@ -782,17 +784,19 @@ async function annualAwards() {
   pushLog(`年度评选：${got.join("、")}！`, "good");
   await say(`赛年 ${curYear} · 年度评选`, `
     <p class="champ-banner">🎖 你入选 ${got.join(" + ")}！</p>
-    ${out.best ? `<p class="flavor">颁奖礼上，“年度最佳演绎”的名字被念出来——是你。这一年所有的苦练，都浓缩进了这一刻的掌声里。</p>` : ""}
+    ${out.best ? `<p class="flavor">颁奖礼上，「年度最佳演绎」的名字被念出来——是你。这一年所有的苦练，都浓缩进了这一刻的掌声里。</p>` : ""}
     ${out.popular ? `<p class="flavor">年度人气选手公布，你的名字稳稳排在前三。这份热度，是粉丝一票一票投出来的。</p>` : ""}`, "继续");
 }
 
 /* ========================= 半途特殊结局(二选一) ======================= */
+// 结局文案严格取自《文案设计 v1.1》§13.1；短剧演员的二选一用文案指定措辞。
 async function offerSpecial(name) {
   P.offered.add(name);
+  const acceptLabel = name === "短剧演员" ? "那还说啥了，我将震碎娱乐圈" : `接受 →【达成结局·${name}】`;
   const idx = await choose(`人生岔路 · ${name}`, `
     <p class="flavor">${E.ENDING_TEXT[name]}</p>`,
-    [{ label: "我还是更喜欢赛场", hint: "继续职业生涯（本周目不再提示）" },
-     { label: `接受 →【达成结局·${name}】`, hint: "就此退役，开启新身份", cls: "primary" }]);
+    [{ label: "我还是更喜欢赛场", hint: "继续游戏（本周目不再提示）" },
+     { label: acceptLabel, hint: `达成结局·${name}`, cls: "primary" }]);
   return idx === 1;
 }
 
@@ -896,12 +900,13 @@ async function ending(grandSlam, forced, fullCareer) {
   pushLog(`生涯结束：${finalName}`, isForced ? "bad" : "good");
 
   const got = Object.keys(ach).filter(k => ach[k]);
+  // feedback14 / 文案 §13.3：结局界面成就过多，只列名称、不再为每个成就配文案。
   const achHtml = got.length
-    ? got.map(a => `<div class="ach"><b>${a}</b><span>${E.ACH_DESC[a] || ""}</span></div>`).join("")
+    ? got.map(a => `<span class="achname">${a}</span>`).join("")
     : `<div class="ach muted">本周目未解锁成就。</div>`;
-  const fullId = `${P.team}_${P.name}`;
-  const endingText = (E.ENDING_TEXT[finalName] || "").replace("玩家ID", fullId);
   const champLine = `夏 ${P.champ["夏"]}　秋 ${P.champ["秋"]}　IVS ${P.champ["IVS"]}　深渊 ${P.champ["深渊"]}　｜　亚 ${P.runnerups}　季 ${P.thirds}　FMVP ${P.fmvp_total}`;
+  // 断开链接文案占位「玩家ID」替换为玩家实际选手 ID（第五人格匹配梗）。
+  const endingText = (E.ENDING_TEXT[finalName] || "").replace("玩家ID", P.playerId);
 
   await present({
     title: `结局 · ${finalName}`,
@@ -911,12 +916,12 @@ async function ending(grandSlam, forced, fullCareer) {
         <div class="ending-name">${finalName}</div>
         <p class="ending-text">${endingText}</p>
       </div>
-      <h3 class="rv">生涯回顾 · ${fullId}（${identityName(P.identity, P.role)}·${P.role}）</h3>
+      <h3 class="rv">生涯回顾 · ${P.name}（${P.identity}·${P.role}）</h3>
       <div class="review">
         <div class="rv-attrs">
-          ${rvBar("技术", P.tech, "#5b9dff")}${rvBar("战术", P.tac, "#a78bfa")}
-          ${rvBar("体能", P.phys, "#39d98a")}${rvBar("稳定", P.stab, "#ffd166")}
-          ${rvBar("容貌", P.appearance, "#ff7eb6")}
+          ${rvBar("技术", P.tech, "#f5cf6a")}${rvBar("战术", P.tac, "#6ea8fe")}
+          ${rvBar("体能", P.phys, "#4ade80")}${rvBar("稳定", P.stab, "#c4a3f0")}
+          ${rvBar("容貌", P.appearance, "#f0a6c0")}
         </div>
         <div class="rv-res">
           <span>人气 <b>${P.pop.toFixed(1)} 万</b></span>
@@ -928,7 +933,7 @@ async function ending(grandSlam, forced, fullCareer) {
         <div class="rv-champ">🏆 ${champLine}</div>
       </div>
       <h3 class="rv">解锁成就（${got.length}）</h3>
-      <div class="achs">${achHtml}</div>`,
+      <div class="achnames">${achHtml}</div>`,
     choices: [{ label: "🔄 再来一局", cls: "primary" }],
   });
   logLines = []; P = null; renderHUD();
@@ -938,8 +943,8 @@ function rvBar(k, v, c) { return `<div class="rvbar"><span>${k}</span><div class
 
 /* ============================== 启动 ================================== */
 async function boot() {
-  await say("IVL 模拟器 · 可玩切片 第二版 v2.3", `
-    <p>欢迎来到《IVL 模拟器》第二版垂直切片。你将扮演一名《第五人格》职业电竞选手，从青训出道，征战 7 个赛年。</p>
+  await say("IVL 模拟器 · 可玩切片 demo-v2.1", `
+    <p>欢迎来到《IVL 模拟器》可玩垂直切片。你将扮演一名《第五人格》职业电竞选手，从青训出道，征战 7 个赛年。</p>
     <ul class="intro">
       <li><b>赛季目标面板</b>：每年三类推荐目标（竞技/养成/风险）为你指路。</li>
       <li><b>训练养成 + 突发事件</b>：选项不预告数值，选完才公布结果（凭直觉抉择）。</li>

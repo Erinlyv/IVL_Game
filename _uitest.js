@@ -14,6 +14,7 @@ const html = `<!DOCTYPE html><html><body>
   <div id="hud"></div><div id="log"></div>
   <section><div id="main"></div></section>
   <div id="toast"></div>
+  <div id="cc"></div>
 </body></html>`;
 
 const dom = new JSDOM(html, { runScripts: "outside-only", pretendToBeVisual: true });
@@ -24,8 +25,9 @@ global.Event = dom.window.Event;
 
 // 在 jsdom 的 window 作用域里执行两份脚本，使其 const/函数互通且 window.IVL 可见
 const engineSrc = fs.readFileSync(path.join(__dirname, "engine.js"), "utf8");
+const chargenSrc = fs.readFileSync(path.join(__dirname, "chargen.js"), "utf8");
 const gameSrc = fs.readFileSync(path.join(__dirname, "game.js"), "utf8");
-dom.window.eval(engineSrc + "\n;//---\n" + gameSrc);
+dom.window.eval(engineSrc + "\n;//---\n" + chargenSrc + "\n;//---\n" + gameSrc);
 
 const TARGET = parseInt(process.argv[2] || "3", 10);
 const d = dom.window.document;
@@ -36,9 +38,33 @@ let endings = [];
 let inEnding = false;
 
 function clickOne() {
-  // 1) 角色名输入
-  const inp = q("#nameInput");
-  if (inp) { inp.value = "测试侠"; const ok = q("#nameOk"); if (ok) { ok.click(); return true; } }
+  // === demo6 角色创建覆盖层（chargen.js） ===
+  const cc = q("#cc");
+  if (cc && cc.classList.contains("show")) {
+    // 完成弹窗：开启职业生涯
+    const ccmodal = q("#ccmodal");
+    if (ccmodal && ccmodal.classList.contains("show")) { q("#ccclose").click(); return true; }
+    // 第 1 步：填队名与选手 ID
+    const ccteam = q("#ccteam");
+    if (ccteam) {
+      const ccpid = q("#ccpid");
+      const fire = (el, v) => { el.value = v; el.dispatchEvent(new dom.window.Event("input")); };
+      if (!ccteam.value) { fire(ccteam, "测试队"); return true; }
+      if (ccpid && !ccpid.value) { fire(ccpid, "测试侠"); return true; }
+    }
+    // 第 2/3 步：未选中则点一个选项卡（定位 / 身份）
+    const opts = qa("#cc .opt");
+    if (opts.length && !qa("#cc .opt.sel").length) {
+      opts[Math.floor(Math.random() * opts.length)].click(); return true;
+    }
+    // 偶尔刷新天赋
+    const reroll = q("#ccreroll");
+    if (reroll && Math.random() < 0.3) { reroll.click(); return true; }
+    // 推进 / 完成签约
+    const next = q("#ccnext");
+    if (next && !next.disabled) { next.click(); return true; }
+    return true; // 覆盖层仍在但需等待渲染
+  }
   // 2) 训练项目
   const projs = qa(".trainproj").filter(b => !b.disabled && !b.classList.contains("disabled"));
   if (projs.length) { projs[Math.floor(Math.random() * projs.length)].click(); return true; }

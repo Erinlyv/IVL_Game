@@ -40,7 +40,7 @@ function autoMatch(p, stage, oppPop, winPop, year, opts = {}) {
   p.stamina -= E.gameCost(stage);
   const fainted = p.stamina <= 0;
   let fdelta = 0;
-  const ev = E.rollMatchEvent(p);
+  const ev = E.rollMatchEvent(p, { atMostOne: stage === "常规" });
   if (ev) { if (ev.needChoice) { fdelta = ev.options[0].resolve(p).fdelta; } else { fdelta = ev.fdelta || 0; } }
   const buff = p.nextGameBuff || 0; p.nextGameBuff = 0;
   const { F } = E.computeF(p, stage, oppPop, year, oppBonus, fdelta, buff);
@@ -148,7 +148,7 @@ function sel(p, year) {
 }
 
 function career(cfg) {
-  const p = new E.Player(cfg.identity, "T", "求生者");
+  const p = new E.Player(cfg.identity, "T", "P", "求生者");
   if (cfg.appHigh) p.appearance = E.rnd(80, 100);
   let grand = false, forced = null, completed = 0;
   try {
@@ -183,8 +183,8 @@ function career(cfg) {
 
 const POLICIES = {
   "普通养成": { identity: "青训", attrs: [["单练", "tech"], ["团队训练", "tac"], ["体能训练", "phys"], ["直播排位", "stab"]], intensity: "正常", therapy: true },
-  "重点养成": { identity: "青训", attrs: [["单练", "tech"], ["团队训练", "tac"]], intensity: "高强度", shop: true, wrist: true, shopItems: ["营养师", "稳态书"], therapy: true },
-  "极限养成": { identity: "人皇", attrs: [["单练", "tech"], ["团队训练", "tac"], ["体能训练", "phys"]], intensity: "高强度", shop: true, wrist: true, shopItems: ["营养师", "单练机会", "复盘机会", "稳态书", "私人陪练"], therapy: true },
+  "重点养成": { identity: "青训", attrs: [["单练", "tech"], ["团队训练", "tac"]], intensity: "高强度", shop: true, wrist: true, shopItems: ["运动营养师", "《好心态决定电竞选手的一生》"], therapy: true },
+  "极限养成": { identity: "人皇", attrs: [["单练", "tech"], ["团队训练", "tac"], ["体能训练", "phys"]], intensity: "高强度", shop: true, wrist: true, shopItems: ["运动营养师", "榜前绝活玩家的单练机会", "顶尖退役选手的复盘机会", "《好心态决定电竞选手的一生》", "私人陪练"], therapy: true },
   "颜值流量": { identity: "主播", appHigh: true, attendPop: true, attrs: [["体能训练", "phys"], ["直播排位", "stab"]], intensity: "正常", rest: true, shop: true, wrist: true, checkup: true, shopItems: [], therapy: true },
 };
 

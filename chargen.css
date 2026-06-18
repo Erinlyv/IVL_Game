@@ -1,0 +1,108 @@
+/* =============================================================================
+ * IVL 模拟器 · 角色创建板块（demo6 原样移植，scoped 于 #cc 覆盖层）
+ * 颜色变量复用 styles.css 的 :root（与 demo6 同源：藏蓝 + 暗金）。
+ * 所有选择器均限定在 #cc 之内，避免与主界面 .track/.app/.bar 等类名冲突。
+ * ===========================================================================*/
+#cc {
+  position: fixed; inset: 0; z-index: 60; display: none; overflow-y: auto;
+  font-family: 'Noto Sans SC', -apple-system, "PingFang SC", sans-serif; color: var(--fg);
+  background:
+    radial-gradient(1000px 520px at 80% -12%, rgba(226, 181, 62, .10), transparent 58%),
+    radial-gradient(700px 500px at 0% 110%, rgba(59, 90, 160, .18), transparent 55%),
+    var(--bg);
+}
+#cc.show { display: block; }
+#cc .app { max-width: 980px; margin: 0 auto; padding: 0 22px 60px; }
+
+/* Hero */
+#cc .hero { padding: 46px 0 26px; text-align: center; position: relative; }
+#cc .hero .crest {
+  width: 58px; height: 58px; margin: 0 auto 16px; border-radius: 16px;
+  background: linear-gradient(150deg, var(--gold), #b8861f); display: grid; place-items: center;
+  font-family: 'Sora', sans-serif; font-weight: 700; color: #1a1205; font-size: 20px;
+  box-shadow: 0 12px 34px rgba(226, 181, 62, .3);
+}
+#cc .hero .ey { font-family: 'Sora', sans-serif; letter-spacing: 5px; font-size: 12px; color: var(--gold2); margin-top: 0; }
+#cc .hero h1 { font-family: 'Sora', sans-serif; font-weight: 700; font-size: 30px; margin: 10px 0 8px; letter-spacing: .5px; }
+#cc .hero p { color: var(--muted); font-size: 14.5px; max-width: 540px; margin: 0 auto; line-height: 1.7; }
+
+/* 进度药丸（重置全局 .track 的 height/background 泄漏） */
+#cc .track { display: flex; justify-content: center; gap: 8px; margin: 22px 0 6px; height: auto; background: transparent; border-radius: 0; overflow: visible; }
+#cc .track .p { display: flex; align-items: center; gap: 8px; color: var(--dim); font-size: 13px; font-weight: 500; }
+#cc .track .p .n { width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--line2); display: grid; place-items: center; font-family: 'Sora', sans-serif; font-size: 12px; transition: .25s; }
+#cc .track .p.on { color: var(--fg); }
+#cc .track .p.on .n { border-color: var(--gold); background: var(--gold); color: #1a1205; }
+#cc .track .p.ok .n { border-color: var(--ok); background: var(--ok); color: #06210f; }
+#cc .track .sep { width: 26px; height: 1.5px; background: var(--line2); align-self: center; margin-top: 0; }
+
+/* 卡片 */
+#cc .card { background: linear-gradient(180deg, var(--surface), var(--bg2)); border: 1px solid var(--line); border-radius: 22px; padding: 30px 34px; margin-top: 20px; box-shadow: 0 24px 60px rgba(0, 0, 0, .4); }
+#cc .card .ch { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+#cc .card .ch .bar { width: 4px; height: 22px; border-radius: 3px; background: linear-gradient(var(--gold), #b8861f); }
+#cc .card .ch h2 { font-family: 'Sora', sans-serif; font-size: 20px; }
+#cc .card .cguide { color: var(--muted); font-size: 14px; margin: 0 0 22px 16px; line-height: 1.6; }
+
+/* 输入 */
+#cc .fieldrow { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+#cc .field .lab { font-size: 13px; color: var(--muted); margin-bottom: 8px; display: block; }
+#cc .inp { width: 100%; background: var(--bg); border: 1.5px solid var(--line2); border-radius: 13px; color: var(--fg); font-family: 'Noto Sans SC', sans-serif; font-size: 16px; padding: 14px 16px; outline: none; transition: .18s; }
+#cc .inp::placeholder { color: #46506a; }
+#cc .inp:focus { border-color: var(--gold); box-shadow: 0 0 0 4px var(--gold-soft); }
+#cc .signrow { margin-top: 24px; background: var(--bg); border: 1px solid var(--line2); border-radius: 16px; padding: 18px 22px; display: flex; align-items: center; gap: 18px; position: relative; overflow: hidden; }
+#cc .signrow::after { content: ""; position: absolute; right: -30px; top: -30px; width: 120px; height: 120px; border-radius: 50%; background: radial-gradient(circle, var(--gold-soft), transparent 70%); }
+#cc .signrow .badge { width: 46px; height: 46px; border-radius: 12px; background: var(--gold-soft); color: var(--gold2); display: grid; place-items: center; font-family: 'Sora', sans-serif; font-weight: 700; }
+#cc .signrow .k { font-size: 12px; color: var(--dim); }
+#cc .signrow .v { font-family: 'Sora', sans-serif; font-weight: 700; font-size: 25px; margin-top: 3px; word-break: break-all; }
+#cc .signrow .v em { color: var(--dim); font-style: normal; font-weight: 500; }
+
+/* 选择卡 */
+#cc .opts { display: grid; gap: 14px; }
+#cc .opts.two { grid-template-columns: 1fr 1fr; }
+#cc .opt { cursor: pointer; border: 1.5px solid var(--line2); border-radius: 16px; padding: 20px; background: var(--bg); transition: .2s; position: relative; overflow: hidden; }
+#cc .opt:hover { border-color: var(--gold2); transform: translateY(-2px); }
+#cc .opt .oh { display: flex; align-items: center; gap: 13px; }
+#cc .opt .nm { font-family: 'Sora', sans-serif; font-size: 17px; font-weight: 600; }
+#cc .opt .ds { font-size: 13px; color: var(--muted); margin-top: 10px; line-height: 1.6; }
+#cc .opt .check { position: absolute; top: 18px; right: 18px; width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line2); display: grid; place-items: center; color: transparent; transition: .2s; }
+#cc .opt.sel { border-color: var(--gold); background: linear-gradient(180deg, var(--gold-soft), transparent); }
+#cc .opt.sel .check { border-color: var(--gold); background: var(--gold); color: #1a1205; }
+
+/* 属性 */
+#cc .attrtop { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+#cc .btn { cursor: pointer; border: none; font-family: 'Noto Sans SC', sans-serif; font-weight: 600; border-radius: 12px; transition: .18s; font-size: 14px; }
+#cc .btn-ghost { background: var(--surface2); color: var(--gold2); border: 1px solid var(--line2); padding: 10px 17px; }
+#cc .btn-ghost:hover { border-color: var(--gold2); }
+#cc .attrs { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 30px; }
+#cc .attr .top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
+#cc .attr .nm { font-size: 14px; font-weight: 600; }
+#cc .attr .nm span { color: var(--dim); font-size: 12px; font-weight: 400; margin-left: 6px; }
+#cc .attr .vv { font-family: 'Sora', sans-serif; font-size: 18px; font-weight: 700; color: var(--gold2); }
+#cc .attr .bar { height: 8px; border-radius: 6px; background: var(--bg); overflow: hidden; width: auto; }
+#cc .attr .bf { height: 100%; width: 0; border-radius: 6px; background: linear-gradient(90deg, #b8861f, var(--gold2)); transition: width .8s cubic-bezier(.16, 1, .3, 1); }
+
+/* 底栏 */
+#cc .foot { display: flex; align-items: center; gap: 16px; margin-top: 26px; }
+#cc .foot .tip { flex: 1; color: var(--muted); font-size: 13.5px; }
+#cc .btn-back { background: transparent; color: var(--muted); border: 1px solid var(--line2); padding: 14px 24px; }
+#cc .btn-back:hover { color: var(--fg); border-color: var(--fg); }
+#cc .btn-go { background: linear-gradient(135deg, var(--gold2), var(--gold)); color: #1a1205; padding: 14px 34px; box-shadow: 0 10px 26px rgba(226, 181, 62, .32); }
+#cc .btn-go:hover { filter: brightness(1.05); transform: translateY(-1px); }
+#cc .btn-go:disabled { background: var(--surface2); color: var(--dim); box-shadow: none; cursor: not-allowed; filter: none; transform: none; }
+
+/* 完成弹窗 */
+#cc .modal { position: fixed; inset: 0; z-index: 70; display: none; align-items: center; justify-content: center; background: rgba(6, 10, 20, .82); backdrop-filter: blur(7px); }
+#cc .modal.show { display: flex; }
+#cc .modal .mc { width: min(520px, 92vw); background: linear-gradient(180deg, var(--surface), var(--bg2)); border: 1px solid var(--line2); border-radius: 22px; padding: 32px; text-align: center; box-shadow: 0 30px 70px rgba(0, 0, 0, .5); animation: ccRise .4s cubic-bezier(.16, 1, .3, 1); }
+@keyframes ccRise { from { transform: translateY(16px); opacity: 0; } }
+#cc .modal .seal { width: 64px; height: 64px; border-radius: 18px; background: linear-gradient(150deg, var(--gold), #b8861f); color: #1a1205; display: grid; place-items: center; font-family: 'Sora', sans-serif; font-weight: 700; font-size: 26px; margin: 0 auto 14px; box-shadow: 0 12px 30px rgba(226, 181, 62, .35); }
+#cc .modal h3 { font-family: 'Sora', sans-serif; font-size: 22px; }
+#cc .modal .bn { font-family: 'Sora', sans-serif; font-size: 30px; font-weight: 700; color: var(--gold2); margin: 8px 0 4px; word-break: break-all; }
+#cc .modal .sum { text-align: left; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 16px 0; font-size: 13px; color: var(--muted); line-height: 1.95; }
+#cc .modal .sum b { color: var(--fg); }
+
+@media (max-width: 760px) {
+  #cc .fieldrow { grid-template-columns: 1fr; }
+  #cc .opts.two { grid-template-columns: 1fr; }
+  #cc .attrs { grid-template-columns: 1fr; }
+  #cc .card { padding: 24px 20px; }
+}

@@ -1,5 +1,5 @@
 /* =============================================================================
- * IVL 模拟器 · 引擎 (engine.js) · 垂直可玩切片 第二版 v2.3
+ * IVL 模拟器 · 引擎 (engine.js) · 垂直可玩切片 demo-v2.1
  * 严格移植自《测试脚本/montecarlo_ivl.py》v2.3（对齐《测试版 v2.3》/《数值设计 v5.2》/
  * 《策划案 v6.3》/《文案设计 v1.1》）。把脚本里的"策略自动决策"替换为玩家点击，
  * 数值 / 公式逐项保持一致，使 demo 手感与已回归的平衡同源。
@@ -130,14 +130,17 @@ const SHOP_ITEMS = [
   { name: "私人陪练", price: 1200, qty: 2, kind: "attr", eff: { tech: 2, tac: 2 }, group: "属性成长",
     desc: "技术 +2、战术 +2（立即）", tag: "全能不是天赋，是有人陪你磨" },
   { name: "俱乐部公关团队", price: 1200, qty: 1, kind: "clear", slot: "news", group: "舆论处理",
-    desc: "立即清除负面新闻 debuff", tag: "黑热搜会过去，但关键比赛不会等你慢慢调整心情。" },
+    desc: "立即清除负面新闻 debuff", tag: "别让场外节奏打崩场内状态" },
 ];
 
 /* ------------------------------ Player --------------------------------- */
 class Player {
-  constructor(identity, name, role) {
+  // 策划案 v6.3 §四：完整选手 ID = 队伍名称_玩家ID（如 MRC_XiaoD）。
+  constructor(identity, teamName, playerId, role) {
     this.identity = identity;
-    this.name = name || "无名选手";
+    this.teamName = (teamName || "MRC").trim() || "MRC";
+    this.playerId = (playerId || "无名选手").trim() || "无名选手";
+    this.name = `${this.teamName}_${this.playerId}`;   // 面板/赛场显示用完整 ID
     this.role = role || "求生者";
 
     this.appearance = rnd(1, 100);
@@ -231,6 +234,11 @@ class Player {
       this[k] = clamp(this[k], 0, 100);
     }
   }
+  // 转会后可重新输入一次队伍名称（选手 ID 不变），完整 ID 随之更新（策划 §四.3 / §六.5）。
+  renameTeam(newTeam) {
+    this.teamName = (newTeam || this.teamName).trim() || this.teamName;
+    this.name = `${this.teamName}_${this.playerId}`;
+  }
   get pop_mult() { return 0.5 + this.appearance / 100; }
   get stamina_max() { return 100 + (this.phys - 50) * 0.6; }
   get cp() {
@@ -300,10 +308,13 @@ function luckCheck(p) { return p.luck + rnd(0, 40) >= 70; }
 
 /* 比赛期事件(6 件), 同一比赛阶段每种至多一次(p.fired_events)。
  * feedback15: 选项 label 不含数值; 选完由 resolve() 返回 {fdelta, txt}。
+ * demov2.1feedback2: 整体概率下调; 常规赛(atMostOne)本阶段最多触发一次比赛期事件。
+ * opts.atMostOne=true 时, 若本比赛阶段已触发过任意事件则不再触发。
  * 返回: {auto:true, fdelta, txt} | {needChoice:true, key, flavor, options:[{label, resolve}]} | null */
-function rollMatchEvent(p) {
+function rollMatchEvent(p, opts = {}) {
   const fe = p.fired_events;
-  const seq = [["火热", 0.005], ["BP", 0.08], ["设备", 0.06], ["应援扇", 0.05], ["守椅", 0.07], ["加时", 0.05]];
+  if (opts.atMostOne && fe.size > 0) return null;   // 常规赛：本阶段最多一次比赛期事件
+  const seq = [["火热", 0.001], ["BP", 0.01], ["设备", 0.01], ["应援扇", 0.01], ["守椅", 0.01], ["加时", 0.02]];
   for (const [name, prob] of seq) {
     if (fe.has(name)) continue;
     if (Math.random() < prob) {
@@ -312,8 +323,8 @@ function rollMatchEvent(p) {
         return { needChoice: true, key: "火热进行中",
           flavor: "比赛进行当中，赛场突然小范围起火。正在选手席上的你选择——",
           options: [
-            { label: "坐怀不乱，比赛优先", resolve(pl) { pl.addPop(3); return { fdelta: 0, txt: "你沉着的表现吸引了一大批粉丝。人气 +3。" }; } },
-            { label: "两股战战，几欲先走", resolve(pl) { pl.money += 500; return { fdelta: 0, txt: "看到你被吓得够呛，官方给了你一笔补偿金。资金 +500。" }; } },
+            { label: "坐怀不乱，比赛优先", resolve(pl) { pl.addPop(3); return { fdelta: 0, txt: "你沉着的表现吸引了一大批粉丝。（人气 +3）" }; } },
+            { label: "两股战战，几欲先走", resolve(pl) { pl.money += 500; return { fdelta: 0, txt: "看到你被吓得够呛，官方给了你一笔补偿金。（资金 +500）" }; } },
           ] };
       }
       if (name === "BP") {
@@ -321,33 +332,36 @@ function rollMatchEvent(p) {
           flavor: "BP 阶段，教练与你思路产生了分歧。",
           options: [
             { label: "选版本强势但熟练度不够的新角色", resolve(pl) {
-                if (pl.tech >= 70 && luckCheck(pl)) return { fdelta: 10, txt: "这一手奇兵直接把对面打懵，BP 优势瞬间变成场上优势！本场 F +10。" };
-                return { fdelta: -8, txt: "新角色手感没找回来，反被对面针对得死死的。本场 F −8。" };
+                if (pl.tech >= 70 && luckCheck(pl)) return { fdelta: 10, txt: "这一手奇兵直接把对面打懵，BP 优势瞬间变成场上优势！（本场 F +10）" };
+                return { fdelta: -8, txt: "新角色手感没找回来，反被对面针对得死死的。（本场 F −8）" };
               } },
-            { label: "选择绝活角色", resolve() { return { fdelta: -3, txt: "你还是选择了自己的老伙计，对面对此也早有准备。本场 F −3。" }; } },
+            { label: "选择绝活角色", resolve() { return { fdelta: -3, txt: "你还是选择了自己的老伙计，对面对此也早有准备。（本场 F −3）" }; } },
           ] };
       }
       if (name === "设备") {
         return { needChoice: true, key: "设备调试中",
           flavor: "你今天感觉施放技能的时候总是不那么顺畅，或许是设备原因？你选择——",
           options: [
-            { label: "申请暂停", resolve(pl) { pl.grow("stab", 2); return { fdelta: -4, txt: "你举手叫了裁判，工作人员上来一通排查。你的状态也因此受到了一些影响。稳定 +2，本场 F −4。" }; } },
-            { label: "硬刚", resolve(pl) { let ex = ""; if (pl.tech >= 70 && luckCheck(pl)) { pl.addPop(4); ex = " 你顶着别扭感打出名场面，人气 +4！"; } return { fdelta: -6, txt: "你决定将就着打，设备的别扭感全程跟着你。本场 F −6。" + ex }; } },
+            { label: "申请暂停", resolve(pl) { pl.grow("stab", 2); return { fdelta: -4, txt: "你举手叫了裁判，工作人员上来一通排查。你的状态也因此受到了一些影响。（稳定 +2，本场 F −4）" }; } },
+            { label: "硬刚", resolve(pl) { let ex = ""; if (pl.tech >= 70 && luckCheck(pl)) { pl.addPop(4); ex = "（人气 +4）"; } return { fdelta: -6, txt: "你决定将就着打。设备的别扭感全程跟着你，全靠意志硬顶——要是还能赢下来，这口气吐得才叫漂亮。（本场 F −6）" + ex }; } },
           ] };
       }
-      if (name === "应援扇") { p.addPop(2); return { auto: true, fdelta: 4, txt: "看台某个角落突然举起一整片你的应援扇，灯牌连成一条线，喊你 ID 的声浪盖过了全场。你的后背也挺直了几分。人气 +2，本场 F +4。" }; }
+      if (name === "应援扇") { p.addPop(2); return { auto: true, fdelta: 4, txt: "看台某个角落突然举起一整片你的应援扇，灯牌连成一条线，喊你 ID 的声浪盖过了全场。你的后背也挺直了几分。（人气 +2，本场 F +4）" }; }
       if (name === "守椅") {
         return { needChoice: true, key: "守椅博弈",
           flavor: "比赛来到最吃博弈的守椅回合——救与守、进与退，只在一念之间。你选择——",
           options: [
-            { label: "放手一搏，强行博弈", resolve(pl) { if (luckCheck(pl)) return { fdelta: 12, txt: "一记漂亮的处理打乱了对手节奏，局势倒向你这边！本场 F +12。" }; pl.stab = Math.max(0, pl.stab - 2); return { fdelta: -8, txt: "你抢早了半拍，反被抓住破绽，局面急转直下。本场 F −8，稳定 −2。" }; } },
-            { label: "按部就班，稳健处理", resolve(pl) { if (pl.tac >= 65) return { fdelta: 6, txt: "你忍住没冲，按既定节奏稳稳推进，不给对手任何可乘之机。本场 F +6。" }; return { fdelta: 2, txt: "你按部就班地处理，没出乱子。本场 F +2。" }; } },
+            { label: "放手一搏，强行博弈", resolve(pl) { return luckCheck(pl)
+                ? { fdelta: 12, txt: "你赌上这一波的时机搏了一把——一记漂亮的处理打乱了对手节奏，局势倒向你这边。（本场 F +12）" }
+                : { fdelta: -8, txt: "你抢早了半拍，反被抓住破绽，局面急转直下。（本场 F −8）" }; } },
+            { label: "按部就班，稳健处理", resolve(pl) { if (pl.tac >= 65) return { fdelta: 5, txt: "你忍住没冲，按既定节奏稳稳推进，不给对手任何可乘之机。（本场 F +5）" }; return { fdelta: 5, txt: "你忍住没冲，按既定节奏稳稳推进。（本场 F +5）" }; } },
           ] };
       }
-      if (name === "加时") {
-        // 加时赛：无主动选项，按稳定性结算(文案设计 §十.B.6)
-        if (p.stab >= 70) { p.addPop(1); return { auto: true, fdelta: 8, txt: "常规局战成平手，比赛被拖进加时赛。越是神经紧绷的时刻你越冷静，手稳得像没事人，硬生生用时间优势拿下这一场。本场 F +8，人气 +1。" }; }
-        return { auto: true, fdelta: -8, txt: "常规局战成平手，比赛被拖进加时赛。灯光、解说、心跳全糊成一片，最关键的那一下，你的心乱了。本场 F −8。" };
+      if (name === "加时") {  // 文案/数值：无主动选项，按稳定性结算
+        if (p.stab >= 70) { p.addPop(1); return { auto: true, fdelta: 8,
+          txt: "常规局战成平手，比赛被拖进加时赛。越是神经紧绷的时刻你越冷静，手稳得像没事人，硬生生用时间优势拿下这一场。（本场 F +8，人气 +1）" }; }
+        return { auto: true, fdelta: -8,
+          txt: "常规局战成平手，比赛被拖进加时赛。灯光、解说、心跳全糊成一片，最关键的那一下，你的心乱了。（本场 F −8）" };
       }
     }
   }
@@ -483,7 +497,6 @@ function reasonTags(p, ctx) {
   const tags = [];
   const survRef = { "常规": 55, "季后": 72, "IVS": 78, "预选": 56, "小组": 68, "总决": 78 }[ctx.stage] || 60;
   if (ctx.win) {
-    if (p.teno_active || p.temp_active) tags.push("injured_win");
     if (ctx.cheer >= 3) tags.push("high_pop_support");
     if (p.nextGameBuffUsed) tags.push("item_buff");
     if (p.tech >= survRef + 8) tags.push("tech_adv");
@@ -547,7 +560,6 @@ function computeAchievements(p, fullCareer, grandSlam, forced) {
   a["浪迹天涯"] = (p.transfer_count >= 3);
   a["轻伤不下火线"] = (p.injured_win >= 10);
   a["流量为王"] = (total === 0 && p.pop >= 130);
-  a["老大"] = (p.pop >= 800 && p.money >= 100000 && total >= 5 && p.fmvp_total >= 2);
   return a;
 }
 
@@ -572,7 +584,7 @@ function finalEnding(p, fullCareer, grandSlam, forced, ach) {
 
 /* ----------------------- 结局 / 成就 文案库 ---------------------------- */
 const ENDING_TEXT = {
-  // 特殊结局（文案设计 v1.1 §十三.1）
+  // §13.1 特殊结局（半途触发）
   "饮水机管理员": "长江后浪推前浪，电子竞技最不缺新鲜血液，漫长的备战间生涯消磨了你的青春与斗志。",
   "你被开除了！": "职业道德比技术更重要，未成年红线碰不得。",
   "伤重退役": "片子拍了很多张，结论一次比一次沉重。你收起诊断书，没有再多说什么。你最后看了一眼那把陪你打了多年的电竞椅——这场告别，不是主动的选择，是身体替你做了决定。",
@@ -580,9 +592,8 @@ const ENDING_TEXT = {
   "短剧演员": "不想跳上车舞的电竞选手不是好短剧演员。",
   "转行解说": "你站在了新的聚光灯下，用丰富的赛场经验贡献了一场场精彩的解说，也见证着一场场金雨落下。",
   "转行教练": "你没有离开热爱的赛场，选择继续陪伴追梦的少年一路成长，如同凝视少年的自己。",
-  "校长好": "你开办了自己的电竞学校，为赛场源源不断地输送人才，在 IVL 界也是一段佳话。",
-  "老大": "冠军、票子、名气都有了，你在光环里渐渐迷失了自己，看谁都不顺眼，索性过起了大门不出二门不迈的躺平生活。",
-  // 最终结局（文案设计 v1.1 §十三.4，优先级 1→13）
+  "校长好": "你开办了自己的电竞学校，为赛场源源不断地输送人才，这崽 IVL 界也是一段佳话。",
+  // §13.4 最终结局
   "时代丰碑": "这个时代以你命名。",
   "黄金之路": "那些场金色的雨，为你铺就金色的路。",
   "终章封王": "少年不负凌云志，跋山涉水赴顶峰。",
@@ -622,36 +633,95 @@ const ACH_DESC = {
   "浪迹天涯": "生涯转会 ≥3 次",
   "轻伤不下火线": "带伤取胜 ≥10 场",
   "流量为王": "全生涯 0 冠却人气 ≥130 万（隐藏）",
-  "老大": "人气≥800·资金≥10万·冠军≥5·FMVP≥2（究极隐藏）",
 };
 
-/* ---------------- 赛后因果解释·文案池(feedback15) --------------------- */
+/* ---------------- 赛后因果解释·文案池(严格取自《文案设计 v1.1》§六) ----- */
 const REASON_TEXT = {
-  // 个人能力类
-  tech_adv: ["你靠一波近乎本能的操作打开了局面，场馆里的声音在那一刻炸开。", "碾压式的胜利。", "当所有人都以为凶多吉少的时候，你精彩的操作挽回了局面。"],
-  tac_adv: ["你没有急着证明自己，而是一点点把对手逼进了最难受的位置。", "这一场赢得不吵闹，却很扎实。每一次转点、每一次拉扯，都像提前算好的一样。", "对手以为还能拖，你却已经把最后的退路封死了。"],
-  stab_adv: ["越到最后，你反而越安静。别人开始变形的时候，你还在按自己的节奏打。", "加时赛拖得很长，但你的手没有抖。", "你把所有声音都关在耳机外，只留下眼前这一局。"],
-  high_pop_support: ["台下粉丝为你举起的灯牌汇成了一片应援海，也为电竞椅上的你注入了能量。", "你听见有人喊你的 ID。那一刻，你突然觉得自己还能再多撑一局。", "这座场馆今晚站在你身后，你没有辜负他们。"],
-  item_buff: ["你说不清这是运气，还是准备终于等来了回报。但那几个关键选择，确实都站在了你这边。", "赛前准备没有白费。对手刚露出习惯动作，你就已经知道下一步该怎么处理。", "赛前的补给救了你一命，至少在最后一局，你还有力气把手抬起来。", "那些专属于你的应援物料铺满了看台，也把这一场变成了你的主场。"],
-  injured_win: ["观众看见的是带伤坚持，只有你知道每一次拉扯有多疼。", "你当然知道该怎么打，这一次，连身体也陪你赢了一回。", "带着伤把这场拿下来，比任何一场都更像一座奖杯。"],
-  teammate_strong: ["这一次，不是你一个人在扛。队友们把你没能处理好的地方一点点补了回来。", "新来的队友很快接住了节奏，你们第一次像真正的整体。", "你没有打出最亮眼的一场，但队伍替你守住了胜利。"],
-  rookie_protect: ["联盟还没有完全看清你的打法，而你抓住了这段最宝贵的新秀窗口。", "没人真正研究过你，这反而成了你第一年的武器。", "初登赛场的青涩没有拖住你，反而让对手低估了你的锋芒。"],
-
-  tech_low: ["你的操作已经足够努力，但细节还是差了一点。", "那一波本可以成为翻盘点，可你的操作速没能跟上思路。", "对面的节奏压得太紧，你几次想靠操作撕开口子都没能成功。"],
-  tac_low: ["你看见了机会，却没能看见机会背后的风险。", "对手把比赛拖进了他们熟悉的节奏，你看着胜利在手中溜走，却无能为力。", "这一场不是输在手上，而是输在对局势的判断。"],
-  phys_low: ["你不是不会打，而是身体已经跟不上这场漫长的消耗战。", "前几局你还能咬住，可越到后面，呼吸和手臂都开始变得沉重。", "这个赛季你把太多时间留给了技术训练，却没给身体留下足够的余地。"],
-  stab_low: ["决胜局的灯光太亮，耳机里的呼吸声也变得格外清楚，你没能像平时那样稳住。", "你不是没有机会，只是在最需要冷静的那一刻，心跳盖过了判断。", "场馆越安静，你越能听见自己的紧张。"],
-  low_stamina: ["漫长的赛程榨干了你最后一点力气，关键回合里，你的手慢了半拍。", "你靠意志撑到了最后，但身体已经不肯再听指挥。", "这一场不是不想赢，是你真的已经没有力气再赢下去了。"],
-  injury_teno: ["你的手伤让你无法发挥出全部的实力，每一次拉扯都像在和疼痛一起比赛。", "你当然知道该怎么打，只是手腕没有给你同样的答案。", "观众看见的是失误，只有你知道那一下疼得有多突然。"],
-  injury_temp: ["肩颈的酸痛让你很难长时间保持专注，每一次转头沟通都像在提醒你该休息了。", "屏幕上的光变得刺眼，你仍然盯着每一个细节，却很难像平时那样敏锐。", "你的手腕在每一次操作后都隐隐作痛，连最熟悉的动作都变得不那么顺手。"],
-  negative_news: ["场外的声音没有真的离开。每一次失误，都像会被放大成新的嘲笑。", "你努力把那些争议关在比赛之外，可它们还是从缝隙里钻进了你的脑子。", "这一场你不只是在和对手比赛，也在和舆论留下的阴影比赛。"],
-  sync_fatigue: ["你已经赢了太多比赛，也为此付出了太多体力。深渊还没开始，疲惫就已经坐在了你身边。", "所有人都在期待金满贯，可只有你知道，前三座奖杯有多重。", "这一年太辉煌，也太漫长。你带着冠军的光环走进深渊，也带着一身没来得及恢复的疲惫。"],
-  opponent_strong: ["你已经打得足够好了，只是对面今天几乎没有给出任何破绽。", "这不是一场轻易能跨过去的比赛。对手站在你面前，就像一堵准备了整个赛季的墙。", "你把能做的都做了，但世界赛的舞台从来不会因为努力就降低难度。"],
-  teammate_weak: ["你已经尽力把局面往回拉，但队伍的其他环节没有跟上。", "这支新队伍还没有真正磨合起来，你们像五个人在打五场不同的比赛。", "有些失误不是你一个人能补回来的。"],
-  age_decay: ["年轻时欠下的训练账，到了生涯后半段开始变得难还。", "你仍然努力，只是身体和时间不再像刚出道时那样慷慨。", "有些差距不是一场训练能补回来的，它们来自整个职业生涯的选择。"],
+  // §6.1 个人能力类
+  tech_adv: [
+    "你靠一波近乎本能的操作打开了局面，场馆里的声音在那一刻炸开。",
+    "碾压式的胜利。",
+    "当所有人都以为凶多吉少的时候，你精彩的操作挽回了局面。"],
+  tac_adv: [
+    "你没有急着证明自己，而是一点点把对手逼进了最难受的位置。",
+    "这一场赢得不吵闹，却很扎实。每一次转点、每一次拉扯，都像提前算好的一样。",
+    "对手以为还能拖，你却已经把最后的退路封死了。"],
+  stab_adv: [
+    "越到最后，你反而越安静。别人开始变形的时候，你还在按自己的节奏打。",
+    "加时赛拖得很长，但你的手没有抖。",
+    "你把所有声音都关在耳机外，只留下眼前这一局。"],
+  tech_low: [
+    "你的操作已经足够努力，但细节还是差了一点。",
+    "那一波本可以成为翻盘点，可你的操作速没能跟上思路。",
+    "对面的节奏压得太紧，你几次想靠操作撕开口子都没能成功。"],
+  tac_low: [
+    "你看见了机会，却没能看见机会背后的风险。",
+    "对手把比赛拖进了他们熟悉的节奏，你看着胜利在手中溜走，却无能为力。",
+    "这一场不是输在手上，而是输在对局势的判断。"],
+  phys_low: [
+    "你不是不会打，而是身体已经跟不上这场漫长的消耗战。",
+    "前几局你还能咬住，可越到后面，呼吸和手臂都开始变得沉重。",
+    "这个赛季你把太多时间留给了技术训练，却没给身体留下足够的余地。"],
+  stab_low: [
+    "决胜局的灯光太亮，耳机里的呼吸声也变得格外清楚，你没能像平时那样稳住。",
+    "你不是没有机会，只是在最需要冷静的那一刻，心跳盖过了判断。",
+    "场馆越安静，你越能听见自己的紧张。"],
+  // §6.2 临场状态类
+  low_stamina: [
+    "漫长的赛程榨干了你最后一点力气，关键回合里，你的手慢了半拍。",
+    "你靠意志撑到了最后，但身体已经不肯再听指挥。",
+    "这一场不是不想赢，是你真的已经没有力气再赢下去了。"],
+  injury_teno: [
+    "你的手伤让你无法发挥出全部的实力，每一次拉扯都像在和疼痛一起比赛。",
+    "你当然知道该怎么打，只是手腕没有给你同样的答案。",
+    "观众看见的是失误，只有你知道那一下疼得有多突然。"],
+  injury_temp: [
+    "肩颈的酸痛让你很难长时间保持专注，每一次转头沟通都像在提醒你该休息了。",
+    "屏幕上的光变得刺眼，你仍然盯着每一个细节，却很难像平时那样敏锐。",
+    "你的手腕在每一次操作后都隐隐作痛，连最熟悉的动作都变得不那么顺手。"],
+  negative_news: [
+    "场外的声音没有真的离开。每一次失误，都像会被放大成新的嘲笑。",
+    "你努力把那些争议关在比赛之外，可它们还是从缝隙里钻进了你的脑子。",
+    "这一场你不只是在和对手比赛，也在和舆论留下的阴影比赛。"],
+  item_buff: [
+    "你说不清这是运气，还是准备终于等来了回报。但那几个关键选择，确实都站在了你这边。",
+    "赛前准备没有白费。对手刚露出习惯动作，你就已经知道下一步该怎么处理。",
+    "赛前的补给救了你一命，至少在最后一局，你还有力气把手抬起来。",
+    "那些专属于你的应援物料铺满了看台，也把这一场变成了你的主场。"],
+  // §6.3 外部环境类
+  opponent_strong: [
+    "你已经打得足够好了，只是对面今天几乎没有给出任何破绽。",
+    "这不是一场轻易能跨过去的比赛。对手站在你面前，就像一堵准备了整个赛季的墙。",
+    "你把能做的都做了，但世界赛的舞台从来不会因为努力就降低难度。"],
+  high_pop_support: [
+    "台下粉丝为你举起的灯牌汇成了一片应援海，也为电竞椅上的你注入了能量。",
+    "你听见有人喊你的 ID。那一刻，你突然觉得自己还能再多撑一局。",
+    "这座场馆今晚站在你身后，你没有辜负他们。"],
+  // §6.4 队伍与经营类
+  teammate_weak: [
+    "你已经尽力把局面往回拉，但队伍的其他环节没有跟上。",
+    "这支新队伍还没有真正磨合起来，你们像五个人在打五场不同的比赛。",
+    "有些失误不是你一个人能补回来的。"],
+  teammate_strong: [
+    "这一次，不是你一个人在扛。队友们把你没能处理好的地方一点点补了回来。",
+    "新来的队友很快接住了节奏，你们第一次像真正的整体。",
+    "你没有打出最亮眼的一场，但队伍替你守住了胜利。"],
+  // §6.5 特殊机制类
+  sync_fatigue: [
+    "你已经赢了太多比赛，也为此付出了太多体力。深渊还没开始，疲惫就已经坐在了你身边。",
+    "所有人都在期待金满贯，可只有你知道，前三座奖杯有多重。",
+    "这一年太辉煌，也太漫长。你带着冠军的光环走进深渊，也带着一身没来得及恢复的疲惫。"],
+  rookie_protect: [
+    "联盟还没有完全看清你的打法，而你抓住了这段最宝贵的新秀窗口。",
+    "没人真正研究过你，这反而成了你第一年的武器。",
+    "初登赛场的青涩没有拖住你，反而让对手低估了你的锋芒。"],
+  age_decay: [
+    "年轻时欠下的训练账，到了生涯后半段开始变得难还。",
+    "你仍然努力，只是身体和时间不再像刚出道时那样慷慨。",
+    "有些差距不是一场训练能补回来的，它们来自整个职业生涯的选择。"],
 };
-// reasonTags 主因优先级(取第一个命中的)
-const REASON_PRIORITY_WIN = ["injured_win", "tech_adv", "tac_adv", "stab_adv", "high_pop_support", "item_buff", "teammate_strong", "rookie_protect"];
+// reasonTags 主因优先级(取第一个命中的，对齐《数值设计 v5.2》§16.6)
+const REASON_PRIORITY_WIN = ["tech_adv", "tac_adv", "stab_adv", "high_pop_support", "item_buff", "teammate_strong", "rookie_protect"];
 const REASON_PRIORITY_LOSE = ["low_stamina", "injury_teno", "injury_temp", "negative_news", "sync_fatigue", "stab_low", "tech_low", "tac_low", "phys_low", "opponent_strong", "teammate_weak", "age_decay"];
 
 function pickReason(tags, win) {
@@ -660,98 +730,144 @@ function pickReason(tags, win) {
   return null;
 }
 
+/* ----------------- FMVP 颁奖词池(严格取自《文案设计 v1.1》§七) ---------- *
+ * 正文取自对应风格池，正文后续接固定结尾句：
+ *   恭喜 {战队}_{ID} 荣获 {年份}{赛事名称}总决赛 FMVP！
+ * --------------------------------------------------------------------- */
+const FMVP_POEMS = {
+  fmvp_generic: [
+    "金雨倾城，星河入袖；少年提剑，自此封侯。",
+    "风起于微末，名成于终局；今夜灯如昼，皆为少年明。",
+    "千淘万漉虽辛苦，吹尽狂沙始到金。",
+    "以热爱为刃，以坚持为甲；终在金雨之下，加冕封王。",
+    "灯火为你而亮，欢呼为你而起；少年不负凌云，巅峰终有其名。",
+    "一程风雨一程歌，今朝登顶震山河。",
+    "灯乍亮，鼓方停，一身锋芒映汗星；且看金雨倾肩处，少年自此万人擎。",
+    "风未歇，剑已鸣，孤光独刺夜深沉；待到尘埃落定日，满城争诵此时名。",
+    "一剑曾经沧海冷，今朝出鞘动雷霆。",
+    "蓄势三冬方破雪，凌寒一枝独占春。",
+    "不啻微茫终汇炬，纵经长夜亦逢明。",
+    "山高自有登顶者，海阔甘为破浪人。",
+    "少年提灯赴长夜，归来已是顶峰人。"],
+  fmvp_hunter_dominance: [
+    "千面博弈，掌控全场；一刀落定，残局称王。",
+    "嗅觉敏锐如猎，决断果敢如雷；赛场之上，统治力恐怖如斯。",
+    "一手绝活惊四座，几度四抓定江山。",
+    "你出刀，便是节奏；你架点，便是天罗。",
+    "黑夜因你而沉，猎物因你而散；这是属于屠皇的演绎。",
+    "雷霆万钧开局，势如破竹收场。"],
+  fmvp_survivor_carry: [
+    "护航牵制，稳健救援；于无声处，撑起全队。",
+    "在偏向监管的版本里，仍开出无数高光的花。",
+    "极限卡救，飞轮消侵；指尖之上，皆是奇迹。",
+    "你慢的每一步，都是为队友赢下的每一秒。",
+    "一颗超级大心脏，扛住了整场比赛的重量。",
+    "灵巧如风，坚韧如磐；舍我其谁，向强敌亮剑。"],
+  fmvp_comeback: [
+    "绝境处反手成局，必败时一锤定音。",
+    "疾风之下立王者，残局之中见真章。",
+    "纵有疾风起，少年不言弃；翻覆乾坤手，金雨落英雄。",
+    "险中取胜，绝处逢生；这一战，惊心动魄，荡气回肠。",
+    "万钧压顶不弯腰，一线生机化燎原。"],
+  fmvp_veteran: [
+    "老骥伏枥志千里，长剑出鞘犹锋芒。",
+    "几度沉浮心未改，一朝登顶志终偿。",
+    "时光不负赶路人，星光终照定海针。",
+    "一坚守便是数载，一出手仍是巅峰。"],
+  fmvp_rookie: [
+    "初出茅庐意气扬，一鸣惊人天下识。",
+    "须知少年凌云志，曾许人间第一流。",
+    "新锋执炬续长明，少年振袖卷云平。",
+    "前辈未竟之处，正是你启程之时。"],
+};
+function fmvpEventName(kind) {
+  if (kind === "深渊") return "深渊的呼唤全球";
+  if (kind === "IVS") return "IVS";
+  return kind + "季赛";
+}
+// 选 FMVP 颁奖词：按夺冠主因/身份匹配风格池，回落到通用池。
+function fmvpSpeech(p, kind, year, ctx = {}) {
+  let pool = FMVP_POEMS.fmvp_generic;
+  if (ctx.comeback) pool = FMVP_POEMS.fmvp_comeback;
+  else if (year === 1) pool = FMVP_POEMS.fmvp_rookie;
+  else if (year >= 6) pool = FMVP_POEMS.fmvp_veteran;
+  else if (p.role === "监管者") pool = FMVP_POEMS.fmvp_hunter_dominance;
+  else if (p.role === "求生者") pool = FMVP_POEMS.fmvp_survivor_carry;
+  const poem = choiceOf(pool);
+  const credit = `恭喜 ${p.name} 荣获 ${2025 + year}${fmvpEventName(kind)}总决赛 FMVP！`;
+  return { poem, credit };
+}
+
 /* --------------------------- 训练期事件(19 件) ------------------------ *
  * feedback15: options 只给"做什么"的措辞, 不预显任何数值; 结果在选完后由 apply() 公布。
  * apply(p) -> 结果文案(string)。私联粉丝赴约可能置 p._fired=true。
  * --------------------------------------------------------------------- */
 const TRAIN_EVENTS = {
   "电竞节": { flavor: "你所在的战队收到了电竞节的邀约！战队经理正在就是否参加征求队员们的意见，你选择——", options: [
-    { label: "参加", apply(p){ p.grow("tech",3); p.grow("tac",3); p.money+=500; p.stamina-=25; return "你在台上和高手过招，也偷师了几手版本理解。技术/战术各 +3，资金 +500，体力 −25。"; } },
-    { label: "不参加", apply(p){ p.stamina+=20; return "你窝在基地养精蓄锐。体力 +20。"; } } ] },
+    { label: "参加", apply(p){ p.grow("tech",3); p.grow("tac",3); p.money+=500; p.stamina-=25; return "你在台上和高手过了几手，也偷师了不少版本理解。（技术 +3、战术 +3、资金 +500、体力 −25）"; } },
+    { label: "不参加", apply(p){ p.stamina+=20; return "你留在基地养精蓄锐。（体力 +20）"; } } ] },
   "漫展邀约": { flavor: "你收到了漫展的邀请，你选择——", options: [
-    { label: "欣然前往", apply(p){ p.addPop(1.5); p.money+=300; p.stamina-=15; p.ev_count++; return "现场尖叫不断，人气大涨。人气 +1.5（×外貌），资金 +300，体力 −15。"; } },
-    { label: "专注训练", apply(p){ p.grow("tech",2); p.grow("phys",2); return "你婉拒了邀约，留在训练室。技术/体能各 +2。"; } } ] },
+    { label: "欣然前往", apply(p){ p.addPop(1.5); p.money+=300; p.stamina-=15; p.ev_count++; return "现场尖叫不断，被簇拥的感觉真不赖。（人气 +1.5、资金 +300、体力 −15）"; } },
+    { label: "专注训练", apply(p){ p.grow("tech",2); p.grow("phys",2); return "你婉拒了邀约，留在训练室。（技术 +2、体能 +2）"; } } ] },
   "节目录制": { flavor: "一档热门综艺向你发来录制邀请，曝光量拉满，就是得占掉几天训练时间。你选择——", options: [
-    { label: "应邀参加", apply(p){ p.addPop(1.5); p.stamina-=15; p.ev_count++; return "节目效果拉满，路人缘 +++。人气 +1.5（×外貌），体力 −15。"; } },
-    { label: "婉拒", apply(p){ p.stamina+=10; return "你选择低调。体力 +10。"; } } ] },
+    { label: "应邀参加", apply(p){ p.addPop(1.5); p.stamina-=15; p.ev_count++; return "节目效果拉满，路人缘肉眼可见地涨。（人气 +1.5、体力 −15）"; } },
+    { label: "婉拒", apply(p){ p.stamina+=10; return "你选择低调，回去补了个觉。（体力 +10）"; } } ] },
   "商务邀约": { flavor: "你收到了品牌方的商务邀请！但忙碌的个人行程会导致你缺席一段时间的训练，你选择——", options: [
-    { label: "接受", apply(p){ p.money+=1200; p.tech=Math.max(0,p.tech-2); p.stamina-=15; p.ev_count++; return "拍摄占用了不少训练时间。资金 +1200，技术 −2，体力 −15。"; } },
-    { label: "专注训练", apply(p){ p.grow("tech",2); p.grow("tac",2); return "钱再赚，状态要紧。技术/战术各 +2。"; } } ] },
+    { label: "接受", apply(p){ p.money+=1200; p.tech=Math.max(0,p.tech-2); p.stamina-=15; p.ev_count++; return "拍摄占用了不少训练时间，但代言费很香。（资金 +1200、技术 −2、体力 −15）"; } },
+    { label: "专注训练", apply(p){ p.grow("tech",2); p.grow("tac",2); return "你沉住气，钱再赚状态要紧。（技术 +2、战术 +2）"; } } ] },
   "网络舆论": { flavor: "深夜刷手机时，你看到网络上有你的舆论风波，你选择——", options: [
-    { label: "气不过，与黑子对喷", apply(p){ p.stamina+=5; p.grow("stab",2); p.addPop(-2); return "你骂得酣畅，气是出了，却也掉了点粉。体力 +5，稳定 +2，人气 −2。"; } },
-    { label: "交给俱乐部处理", apply(p){ p.grow("stab",2); p.money-=300; return "公关团队出手平息。稳定 +2，资金 −300。"; } } ] },
+    { label: "气不过，与黑子对喷", apply(p){ p.stamina-=5; p.grow("stab",2); p.addPop(-2); return "你骂得酣畅，却也掉了点粉。（体力 −5、稳定 +2、人气 −2）"; } },
+    { label: "交给俱乐部处理", apply(p){ p.grow("stab",2); p.money-=300; return "公关团队出手，风波很快平息。（稳定 +2、资金 −300）"; } } ] },
   "老子才是老大": { flavor: "队友赛前人间蒸发，只留下一段神秘小作文。而队内的替补成员技术尚不稳定，你选择——", options: [
-    { label: "主动抗压，熬夜练习新角色", apply(p){ p.grow("tech",4); p.addPop(1); p.stamina-=30; return "你用通宵苦练扛起核心。技术 +4，人气 +1，体力 −30。"; } },
-    { label: "与新队员复盘对局，帮助他快速进步", apply(p){ p.grow("tac",4); p.grow("stab",2); p.stamina-=15; return "一场深夜复盘让全队拧成一股绳。战术 +4，稳定 +2，体力 −15。"; } },
-    { label: "这谁能忍！开小号在网上狂喷这个没担当的队友", apply(p){ p.stamina+=5; if(Math.random()<0.25){ p.addPop(-5); p.stab=Math.max(0,p.stab-4); p.ever_negative=true; return "小号被扒了个底朝天，翻车。体力 +5，人气 −5，稳定 −4。"; } return "你偷偷发泄了一通，没被发现。体力 +5。"; } } ] },
+    { label: "主动抗压，熬夜练习新角色", apply(p){ p.grow("tech",4); p.addPop(1); p.stamina-=30; return "你用通宵苦练扛起了大旗。（技术 +4、人气 +1、体力 −30）"; } },
+    { label: "与新队员复盘对局，帮助他快速进步", apply(p){ p.grow("tac",4); p.grow("stab",2); p.stamina-=15; return "一场深夜复盘让全队拧成一股绳。（战术 +4、稳定 +2、体力 −15）"; } },
+    { label: "这谁能忍！开小号在网上狂喷这个没担当的队友", apply(p){ p.stamina+=5; if(Math.random()<0.25){ p.addPop(-5); p.stab=Math.max(0,p.stab-4); return "你嘴是痛快了，结果小号被扒，反噬到自己身上。（体力 +5、人气 −5、稳定 −4）"; } return "你阴阳怪气了一通，没被发现，心里舒坦了不少。（体力 +5）"; } } ] },
   "不速之客": { flavor: "一只广东双马尾以迅雷不及掩耳之势在训练室的地板上流窜——", options: [
-    { label: "你携带了\u201c膝跳反射\u201d，弹射离开座位", apply(p){ p.grow("tac",2); p.grow("phys",2); return "一个箭步溜得飞快。战术/体能各 +2。"; } },
-    { label: "你携带了\u201c化险为夷\u201d，淡定地用拖鞋拍向小强", apply(p){ p.grow("stab",4); return "你沉着应对，一击毙敌。稳定 +4。"; } } ] },
+    { label: "你携带了「膝跳反射」，弹射离开座位", apply(p){ p.grow("tac",2); p.grow("phys",2); return "一个箭步溜得飞快，反应不是盖的。（战术 +2、体能 +2）"; } },
+    { label: "你携带了「化险为夷」，淡定地用拖鞋拍向小强", apply(p){ p.grow("stab",4); return "你冷静处理，一击毙命，虚惊一场。（稳定 +4）"; } } ] },
   "浴室惊魂": { flavor: "咣当！你在洗澡时一不小心没站稳，摔倒在浴室，左侧耻骨传来剧痛，你选择——", options: [
-    { label: "我是个体面人，坚持穿好衣服爬出浴室求救", apply(p){ p.phys=Math.max(0,p.phys-3); p.stamina-=15; return "你忍痛穿戴整齐才呼救，所幸无大碍。体能 −3，体力 −15。"; } },
-    { label: "管不了那么多了，赶紧来个人帮帮我！", apply(p){ p.stamina-=10; return "队友冲进来把你扶了出去。体力 −10。"; } } ] },
+    { label: "我是个体面人，坚持穿好衣服爬出浴室求救", apply(p){ p.phys=Math.max(0,p.phys-3); p.stamina-=15; return "你硬撑着穿好衣服爬了出去，所幸无大碍。（体能 −3、体力 −15）"; } },
+    { label: "管不了那么多了，赶紧来个人帮帮我！", apply(p){ p.stamina-=10; return "顾不上体面，你大声呼救，队友冲了进来。（体力 −10）"; } } ] },
   "老板跑路": { flavor: "俱乐部换了新老板，但交接出现重大问题导致资金断流，工资发不出来，连菜钱都要阿姨垫付，你选择——", options: [
-    { label: "多接代打单子，日子总要过下去", apply(p){ p.grow("tech",3); p.grow("stab",2); return "你靠代打补贴，也练了手。技术 +3，稳定 +2。"; } },
-    { label: "专心训练，决心在比赛中打出风采", apply(p){ p.grow("tech",3); p.grow("tac",3); return "风浪越大鱼越贵，你选择沉住气。技术/战术各 +3。"; } } ] },
+    { label: "多接代打单子，日子总要过下去", apply(p){ p.grow("tech",3); p.grow("stab",2); return "你靠代打补贴家用，顺手也练了手。（技术 +3、稳定 +2）"; } },
+    { label: "专心训练，决心在比赛中打出风采", apply(p){ p.grow("tech",3); p.grow("tac",3); return "风浪越大鱼越贵，你选择沉住气。（技术 +3、战术 +3）"; } } ] },
   "版本答案": { flavor: "最近一连出了几个吃操作的新角色，繁重的练习让你感到非常疲惫，你选择——", options: [
-    { label: "咬牙坚持，一定要啃下这块硬骨头", apply(p){ p.grow("tech",5); p.phys=Math.max(0,p.phys-4); p.stamina-=30; return "你把新套路肝穿了。技术 +5，体能 −4，体力 −30。"; } },
-    { label: "索性摆烂，状态才是最重要的", apply(p){ p.grow("stab",3); p.stamina+=15; p.addPop(-2); return "你选择保状态，被嘲不思进取。稳定 +3，体力 +15，人气 −2。"; } } ] },
+    { label: "咬牙坚持，一定要啃下这块硬骨头", apply(p){ p.grow("tech",5); p.phys=Math.max(0,p.phys-4); p.stamina-=30; return "你把新套路肝穿了，手都快废了。（技术 +5、体能 −4、体力 −30）"; } },
+    { label: "索性摆烂，状态才是最重要的", apply(p){ p.grow("stab",3); p.stamina+=15; p.addPop(-2); return "你选择保状态，被网友嘲不思进取。（稳定 +3、体力 +15、人气 −2）"; } } ] },
   "手机风波": { flavor: "训练室里出现了无人认领的手机！你选择——", options: [
-    { label: "交给经验丰富的经理处理", apply(p){ p.grow("stab",3); return "经理稳妥处理，化解尴尬。稳定 +3。"; } },
-    { label: "先收起来，赛后问问其他队伍", apply(p){ p.stab=Math.max(0,p.stab-4); return "之后，这支队伍在网上造谣你们偷看了训练机里的赛训，虽然最终真相大白，你还是受到了不小的影响。稳定 −4。"; } } ] },
-  "私联粉丝": { flavor: "一位\u201c粉丝\u201d频繁私信向你表达好感，还约你私下出来见一面。糖衣炮弹，也是职业生涯的一道考题——你选择：", options: [
-    { label: "坚守职业道德，婉拒邀约", apply(p){ if(Math.random()<0.10){ p.addPop(3); return "你客气而坚决地回绝了。这事被对方截图发了出去，\u201c洁身自好\u201d反倒成了一段佳话，路人缘涨了一截。人气 +3。"; } return "你客气而坚决地回绝了。无事发生。"; } },
+    { label: "交给经验丰富的经理处理", apply(p){ p.grow("stab",3); return "经理稳妥地处理了这件事。（稳定 +3）"; } },
+    { label: "先收起来，赛后问问其他队伍", apply(p){ p.stab=Math.max(0,p.stab-4); return "之后，这支队伍在网上造谣你们偷看了训练机里的赛训，虽然最终真相大白，你还是受到了不小的影响。（稳定 −4）"; } } ] },
+  "私联粉丝": { flavor: "一位「粉丝」频繁私信向你表达好感，还约你私下出来见一面。糖衣炮弹，也是职业生涯的一道考题——你选择：", options: [
+    { label: "坚守职业道德，婉拒邀约", apply(p){ if(Math.random()<0.10){ p.addPop(3); return "你客气而坚决地回绝了。这事被对方截图发了出去，「洁身自好」反倒成了一段佳话，路人缘涨了一截。（人气 +3）"; } return "你客气而坚决地回绝了。无事发生。"; } },
     { label: "心动赴约，私下见面", apply(p){
         const minor=Math.random()<0.50, exposed=Math.random()<0.45;
-        if(minor&&exposed){ p._fired=true; return "对方竟是未成年人，照片和聊天记录被扒了个底朝天。俱乐部连夜开了发布会，与你解约。——【你被开除了！】"; }
-        if(!minor&&exposed){ p.addPop(-8); p.stab=Math.max(0,p.stab-5); p.negative_news=true; p.ever_negative=true; return "照片第二天就挂上了热搜，\u201c职业选手私会粉丝\u201d的词条压了一整天，俱乐部的脸色很难看。人气 −8，稳定 −5，叠加负面新闻。"; }
-        if(minor){ p.grow("stab",3); return "聊了几句你才惊觉对方还是个高中生，借口匆匆离场。这次，是真的踩在红线边上了。稳定 +3。"; }
-        p.grow("stab",3); return "虚惊一场。回去的路上你后怕了好一阵——这种事，下不为例。稳定 +3。"; } } ] },
+        if(minor&&exposed){ p._fired=true; return "对方竟是未成年人，照片和聊天记录被扒了个底朝天。俱乐部连夜开了发布会，与你解约。【你被开除了！】"; }
+        if(!minor&&exposed){ p.addPop(-8); p.stab=Math.max(0,p.stab-5); p.negative_news=true; p.ever_negative=true; return "照片第二天就挂上了热搜，「职业选手私会粉丝」的词条压了一整天，俱乐部的脸色很难看。（人气 −8、稳定 −5、叠加负面新闻）"; }
+        if(minor){ p.grow("stab",3); return "聊了几句你才惊觉对方还是个高中生，借口匆匆离场。这次，是真的踩在红线边上了。（稳定 +3）"; }
+        p.grow("stab",3); return "虚惊一场。回去的路上你后怕了好一阵——这种事，下不为例。（稳定 +3）"; } } ] },
   "传奇前辈指点": { flavor: "一位早已退役的名宿路过基地，进训练室和你们唠了几句。机会难得，你选择——", options: [
-    { label: "虚心请教运营心得", apply(p){ p.grow("tac",3); p.grow("stab",2); p.stamina-=15; return "老前辈把当年那套读秒、转点、卡视野的运营思路掰开揉碎讲给你听，你听得入了神。战术 +3，稳定 +2，体力 −15。"; } },
-    { label: "不服气提出单挑切磋", apply(p){ p.grow("tech",3); p.stab=Math.max(0,p.stab-2); return "你被\u201c退役老登\u201d按在板区摩擦，但那几手意识确实让你长了记性。技术 +3，稳定 −2。"; } } ] },
+    { label: "虚心请教运营心得", apply(p){ p.grow("tac",3); p.grow("stab",2); p.stamina-=15; return "老前辈把当年那套读秒、转点、卡视野的运营思路掰开揉碎讲给你听，你听得入了神。（战术 +3、稳定 +2、体力 −15）"; } },
+    { label: "不服气提出单挑切磋", apply(p){ p.grow("tech",3); p.stab=Math.max(0,p.stab-3); return "你有点不服，提出来单挑一把。虽然被「退役老登」按在板区摩擦，但那几手意识，确实让你长了记性。（技术 +3、稳定 −3）"; } } ] },
   "短视频爆火": { flavor: "你的一条手势舞短视频在社交平台爆火，连不玩游戏的同学都来问你是不是成网红了。此时你选择——", options: [
-    { label: "趁热打铁，加更涨粉", apply(p){ p.addPop(4); p.tech=Math.max(0,p.tech-2); p.stamina-=15; return "你连更了好几条，热度肉眼可见地往上窜，代价是训练时间被压得只剩个零头。人气 +4，技术 −2，体力 −15。"; } },
-    { label: "不被打扰，专注训练", apply(p){ p.grow("tech",2); p.grow("tac",2); return "你把热搜静音，一头扎回训练室。流量会过去，但赛场上的东西不骗人。技术/战术各 +2。"; } } ] },
+    { label: "趁热打铁，加更涨粉", apply(p){ p.addPop(4); p.tech=Math.max(0,p.tech-2); p.stamina-=15; return "你连更了好几条，热度肉眼可见地往上窜，粉丝群一天能涨好几个。代价是，训练时间被压得只剩个零头。（人气 +4、技术 −2、体力 −15）"; } },
+    { label: "不被打扰，专注训练", apply(p){ p.grow("tech",2); p.grow("tac",2); return "你把热搜静音、关掉私信提醒，一头扎回训练室。流量会过去，但赛场上的东西不骗人。（技术 +2、战术 +2）"; } } ] },
   "战队团建": { flavor: "俱乐部组织了一次线下团建，KTV、剧本杀、烧烤一条龙。难得不用对着屏幕的一天，你选择——", options: [
-    { label: "积极参加增进默契", apply(p){ p.grow("tac",3); p.grow("stab",2); p.stamina-=15; return "一晚上闹下来，几个平时只在语音里见的队友关系近了不少。战术 +3，稳定 +2，体力 −15。"; } },
-    { label: "借机在房间休整", apply(p){ p.stamina+=40; return "你跟经理报备后回房补觉，睡了个天昏地暗。身体是革命的本钱。体力大幅恢复。"; } } ] },
+    { label: "积极参加增进默契", apply(p){ p.grow("tac",3); p.grow("stab",2); p.stamina-=15; return "一晚上闹下来，几个平时只在语音里见的队友，关系肉眼可见地近了。默契这东西，有时候就是在饭桌上练出来的。（战术 +3、稳定 +2、体力 −15）"; } },
+    { label: "借机在房间休整", apply(p){ p.stamina+=30; return "你跟经理报备后回房补觉，难得睡了个天昏地暗。身体是革命的本钱。（体力 +30）"; } } ] },
   "训练瓶颈期": { flavor: "最近怎么练都不见长，复盘时甚至觉得自己越打越回去了。瓶颈期像一堵墙横在面前，你选择——", options: [
-    { label: "换思路针对性加练", apply(p){ p.grow("tech",3); p.grow("tac",3); p.stamina-=30; return "你和教练翻了几十局录像，揪出几个反复犯的小毛病一遍遍抠。很累，但那堵墙松动了。技术/战术各 +3，体力 −30。"; } },
-    { label: "暂时放空调整心态", apply(p){ p.grow("stab",3); p.stamina+=15; return "你给自己放了半天假，回来时那股拧巴劲儿松开了一些。稳定 +3，体力 +15。"; } } ] },
+    { label: "换思路针对性加练", apply(p){ p.grow("tech",3); p.grow("tac",3); p.stamina-=30; return "你和教练翻了几十局录像，揪出几个反复犯的小毛病，一遍遍地抠。很累，但那堵墙，好像松动了。（技术 +3、战术 +3、体力 −30）"; } },
+    { label: "暂时放空调整心态", apply(p){ p.grow("stab",3); p.stamina+=15; return "你给自己放了半天假，去江边走了走。回来时，那股「非赢不可」的拧巴劲儿，松开了一些。（稳定 +3、体力 +15）"; } } ] },
   "家人探班": { flavor: "爸妈大老远跑来基地看你，手里还拎着家乡的特产。看着他们鬓角的白发，你选择——", options: [
-    { label: "陪伴家人放松一天", apply(p){ p.grow("stab",3); p.stamina+=15; p.tech=Math.max(0,p.tech-2); return "你请了一天假，陪他们逛了逛、吃了顿好的。稳定 +3，体力 +15，技术 −2。"; } },
-    { label: "婉拒继续训练", apply(p){ p.grow("tech",2); p.stab=Math.max(0,p.stab-1); return "你抱了抱他们，又转身回了训练室。\u201c等我打出成绩，再好好陪你们。\u201d技术 +2，稳定 −1。"; } } ] },
+    { label: "陪伴家人放松一天", apply(p){ p.grow("stab",3); p.stamina+=15; p.tech=Math.max(0,p.tech-2); return "你请了一天假，陪他们逛了逛、吃了顿好的。（稳定 +3、体力 +15、技术 −2）"; } },
+    { label: "婉拒继续训练", apply(p){ p.grow("tech",3); p.stab=Math.max(0,p.stab-3); return "你抱了抱他们，又转身回了训练室。「等我打出成绩，再好好陪你们。」——你这样告诉自己。（技术 +3、稳定 −3）"; } } ] },
   "体检预警": { flavor: "年度体检报告出来了，几项指标亮起红灯，队医建议你立刻调整作息、降低强度。你选择——", options: [
-    { label: "遵医嘱调整作息", apply(p){ p.grow("phys",3); p.grow("stab",2); p.stamina-=15; return "你开始按表作息、补练体能。训练量降了点，但身体明显轻快了。体能 +3，稳定 +2，体力 −15。"; } },
-    { label: "硬扛维持高强度", apply(p){ p.grow("tech",3); p.phys=Math.max(0,p.phys-3); p.inj_train_mult=1.5; return "比赛在即，你把报告塞进抽屉照旧连轴转。技术 +3，体能 −3——本训练周期受伤概率升高。"; } } ] },
+    { label: "遵医嘱调整作息", apply(p){ p.grow("phys",3); p.grow("stab",2); p.stamina-=15; return "你开始按表作息、补练体能。手上的训练量是降了点，但身体明显轻快了。（体能 +3、稳定 +2、体力 −15）"; } },
+    { label: "硬扛维持高强度", apply(p){ p.grow("tech",3); p.phys=Math.max(0,p.phys-3); p.inj_train_mult=1.5; return "比赛在即，你把报告塞进抽屉，照旧连轴转。「年轻，扛得住。」——可身体不一定这么想。（技术 +3、体能 −3，本训练周期伤病概率 ×1.5）"; } } ] },
   "直播口嗨翻车": { flavor: "直播时你一句口嗨被掐头去尾截成图，配上耸动标题传遍全网，评论区已经吵翻了天。你选择——", options: [
-    { label: "诚恳道歉灭火", apply(p){ p.addPop(-3); p.grow("stab",3); return "你第一时间发了条澄清加道歉，姿态放得很低，但依旧有人不买账。人气 −3，稳定 +3。"; } },
-    { label: "嘴硬对线", apply(p){ p.stamina+=5; if(Math.random()<0.30){ p.addPop(-5); p.stab=Math.max(0,p.stab-4); p.negative_news=true; p.ever_negative=true; return "你直接开麦回怼，痛快是痛快，却被大主播一转发\u201c挂人\u201d闹大了。人气 −5，稳定 −4，叠加负面新闻。"; } return "你偏不认怂，直接开麦回怼，风波居然自己平息了。体力 +5。"; } } ] },
+    { label: "诚恳道歉灭火", apply(p){ p.addPop(-3); p.grow("stab",3); return "你第一时间发了条澄清加道歉，姿态放得很低，但依旧有人不买账。（人气 −3、稳定 +3）"; } },
+    { label: "嘴硬对线", apply(p){ p.stamina+=5; if(Math.random()<0.30){ p.addPop(-5); p.stab=Math.max(0,p.stab-4); p.negative_news=true; p.ever_negative=true; return "你偏不认怂，直接开麦回怼。结果被大主播一转发，「挂人」的事闹大了。（人气 −5、稳定 −4、叠加负面新闻）"; } return "你偏不认怂，直接开麦回怼。痛快是痛快，好在风波居然自己平息了。（体力 +5）"; } } ] },
 };
 const TRAIN_EVENT_KEYS = Object.keys(TRAIN_EVENTS);
-
-/* ---------------------- FMVP 颁奖词（文案设计 v1.1 §七·通用兜底池） ----- *
- * 正文随机取 1 条，后接固定结尾句：
- * 恭喜 {战队}_{ID} 荣获 {年份}{赛事名称}总决赛 FMVP！
- * --------------------------------------------------------------------- */
-const FMVP_SPEECHES = [
-  "金雨倾城，星河入袖；少年提剑，自此封侯。",
-  "风起于微末，名成于终局；今夜灯如昼，皆为少年明。",
-  "千淘万漉虽辛苦，吹尽狂沙始到金。",
-  "以热爱为刃，以坚持为甲；终在金雨之下，加冕封王。",
-  "灯火为你而亮，欢呼为你而起；少年不负凌云，巅峰终有其名。",
-  "一程风雨一程歌，今朝登顶震山河。",
-  "灯乍亮，鼓方停，一身锋芒映汗星；且看金雨倾肩处，少年自此万人擎。",
-  "风未歇，剑已鸣，孤光独刺夜深沉；待到尘埃落定日，满城争诵此时名。",
-  "一剑曾经沧海冷，今朝出鞘动雷霆。",
-  "蓄势三冬方破雪，凌寒一枝独占春。",
-  "不啻微茫终汇炬，纵经长夜亦逢明。",
-  "山高自有登顶者，海阔甘为破浪人。",
-  "以热血浇铸冠冕，借星光照亮归途。",
-  "少年自有拏云志，如今乘风上九霄。",
-  "少年提灯赴长夜，归来已是顶峰人。",
-];
 
 /* --------------------------- 暴露到全局 -------------------------------- */
 window.IVL = {
@@ -762,8 +878,8 @@ window.IVL = {
   matchStartStamina, gameCost, luckCheck, rollMatchEvent, computeF, settleGame,
   teammateAvgs, checkFMVP, settleChamp, settleRunnerup, settleThird, maxRunTrue,
   specialTriggers, commercialRestEligible, transferRollForced, doTransfer, transferAmbient,
-  annualAwards, reasonTags, pickReason,
+  annualAwards, reasonTags, pickReason, fmvpSpeech, FMVP_POEMS,
   computeAchievements, finalEnding, ENDING_TEXT, ACH_DESC, REASON_TEXT,
-  TRAIN_EVENTS, TRAIN_EVENT_KEYS, FMVP_SPEECHES,
+  TRAIN_EVENTS, TRAIN_EVENT_KEYS,
 };
 
