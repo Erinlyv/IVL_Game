@@ -128,7 +128,7 @@ function abyss(p, year, age, seeded) {
 function shop(p, cfg) {
   p.has_wrist = false; p.has_checkup = false;
   if (!cfg.shop) { if (cfg.therapy && p.teno_active && p.money >= 600) { p.money -= 600; E.healInjury(p); } return; }
-  if (cfg.wrist && p.money >= 500) { p.money -= 500; p.has_wrist = true; }
+  if (cfg.wrist && p.money >= 300) { p.money -= 300; p.has_wrist = true; }
   if (cfg.checkup && p.money >= 600) { p.money -= 600; p.has_checkup = true; }
   for (const it of E.SHOP_ITEMS) {
     if (it.kind !== "attr" || !(cfg.shopItems || []).includes(it.name)) continue;

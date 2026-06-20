@@ -1,5 +1,5 @@
 /* =============================================================================
- * IVL 模拟器 · 样式 demo-v2.2
+ * IVL 模拟器 · 样式 demo-v2.3
  * 设计语言：「电竞转播 × 选手生涯档案」——藏蓝 + 暗金，日常克制、高光时刻燃。
  * 参照 demo6（选手纪录片的交互版）：平时冷静、有重量，只在该热的那几秒热。
  * 字体：Sora（展示/标题）+ Noto Sans SC（正文）。
@@ -360,6 +360,9 @@ body {
 .rv-res { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--muted); border-top: 1px dashed var(--line2); padding-top: 12px; margin-bottom: 8px; }
 .rv-res b { color: var(--fg); font-family: "Sora", sans-serif; }
 .rv-champ { font-size: 14px; color: var(--gold2); }
+.rv-luck { font-size: 13px; color: var(--warn); background: rgba(232, 162, 75, .1); border: 1px solid rgba(232, 162, 75, .3);
+  border-radius: var(--r-sm); padding: 9px 13px; margin: 0 0 12px; line-height: 1.6; }
+.rv-luck b { color: #f4d6a6; font-family: "Sora", sans-serif; }
 .achnames { display: flex; flex-wrap: wrap; gap: 8px; }
 .achname { background: var(--gold-soft); border: 1px solid rgba(226, 181, 62, .26); border-radius: 999px; padding: 6px 15px; font-size: 13px; color: var(--gold2); }
 .achs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }

@@ -1,8 +1,14 @@
 /* =============================================================================
- * IVL 模拟器 · 交互编排 + UI (game.js) · 垂直可玩切片 demo-v2.2
+ * IVL 模拟器 · 交互编排 + UI (game.js) · 垂直可玩切片 demo-v2.3
  * 把已回归引擎(engine.js)的"自动决策"换成玩家点击：角色创建 → 7 赛年
  * (赛季目标面板 / 训练 / 突发事件 / 商店 / 双败季后赛 / IVS / 深渊含季军赛 /
  *  转会 / 年度评选 / 商业休整) → v6.3 结局成就。
+ *
+ * v2.3 新增（对齐《策划案 v6.5》/《数值设计 v5.4》/《文案设计 v1.3》《demov2.2feedback》）：
+ *   · 进入比赛期体力 = 现有体力 +60（封顶上限）；护腕 300 / 战术分析仪 400；
+ *   · 好运签新增「临场不会失常」（掷骰浮动下限抬到 −V/3）；
+ *   · 深渊小组 [50,72] / 总决 [65,82] 下限下调；
+ *   · 常规赛前新增开赛说明界面 + 进入按钮；结局生涯回顾揭晓本轮「运气」值。
  *
  * v2.2 新增（对齐《策划案 v6.4》/《数值设计 v5.3》/《文案设计 v1.2》）：
  *   · 商店刷新：常驻基础 + 9 抽 5 常规 + 8% 命中稀缺抽 1（后悔药 / 庄园密信 / 骨龄逆转血清）；
@@ -11,7 +17,7 @@
  *   · 商业休整门槛收紧（容貌>60 且 赛年≥4）；生涯回顾称号修复（监管者→屠皇）。
  *
  * 依据《demo v2.3 feedback》整改：
- *   ① 运气为完全隐藏数值，UI 不显示"运气"这一栏、全程不提及、结局也不揭晓；
+ *   ① 运气为隐藏数值，对局全程不显示 / 不提及，仅在生涯落幕的结局界面揭晓本轮运气值（v6.5 调整）；
  *   ② 全部前台文案严格对齐《文案设计 v1.1》（身份介绍 / 选拔 / 目标面板 /
  *      转会 / 赛事旁白 / 赛后因果 / FMVP 颁奖词 / 商业休整 / 伤病预警 /
  *      突发状况 / 商店标签 / 年度评选 / 结局成就，结局界面成就仅列名称）；
@@ -102,6 +108,7 @@ function renderHUD() {
   if (P.has_seal) debuffs.push(`<span class="db rare">庄园密信</span>`);
   if (P.serum_active) debuffs.push(`<span class="db rare">逆龄血清</span>`);
   if (P.nextGameBuff) debuffs.push(`<span class="db buff">下场F+${P.nextGameBuff.toFixed(0)}</span>`);
+  if (P.nextNoBadRoll) debuffs.push(`<span class="db buff">🎴下场不失常</span>`);
 
   h.innerHTML = `
     <div class="hud-id">
@@ -138,7 +145,7 @@ function renderHUD() {
 const INV_META = {
   "柠檬水": { slot: "stam", val: 30, label: "🥤体力+30" },
   "筋膜枪": { slot: "stam", val: 60, label: "🔫体力+60" },
-  "好运签": { slot: "fbuff", val: 8, label: "🎴下场F+8" },
+  "好运签": { slot: "fbuff", val: 8, noBadRoll: true, label: "🎴下场F+8·不失常" },
   "定制应援物料": { slot: "fbuff", val: 5, pop: 0.5, label: "📣下场F+5" },
   "战术分析仪": { slot: "fbuff", val: 6, label: "📊下场F+6" },
   "理疗康复套餐": { slot: "heal", label: "💊清伤病" },
@@ -162,7 +169,8 @@ function useItem(name) {
   } else if (m.slot === "fbuff") {
     P.nextGameBuff += m.val;
     if (m.pop) P.addPop(m.pop);
-    flash(`使用${name}：下一场 F +${m.val}${m.pop ? "、人气+" + m.pop : ""}`);
+    if (m.noBadRoll) P.nextNoBadRoll = true;   // 好运签：下一场临场发挥不会失常
+    flash(`使用${name}：下一场 F +${m.val}${m.noBadRoll ? "、临场不会失常" : ""}${m.pop ? "、人气+" + m.pop : ""}`);
   } else if (m.slot === "heal") {
     if (!P.teno_active && !P.temp_active) { flash("当前没有伤病可清除"); return; }
     E.healInjury(P);
@@ -453,7 +461,7 @@ function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 /* 手动掷骰（v6.4 / v5.3 §六.2）：仅季后赛 / 深渊总决赛触发。玩家点「该你上场了！」投出本场临场浮动 r∈[−V,+V]，
  * 区间 / 分布与系统自动取值完全一致；落点按六等分映射成 6 档发挥反馈（纯展示，不二次影响判定）。
  * 返回掷出的 r（交给 computeF 作为 forcedRfloat）。redo 重打会再次调用本函数，得到全新随机浮动。 */
-async function manualDiceRoll(p, redo) {
+async function manualDiceRoll(p, redo, noBad) {
   const V = E.fluctV(p);
   return await new Promise((resolve) => {
     main().innerHTML = `
@@ -461,11 +469,12 @@ async function manualDiceRoll(p, redo) {
         <p class="sub">${redo ? "后悔药已下肚，深呼吸，重新投出你今天的手感。" : "深呼吸——这一掷，决定你今天临场的手感。"}</p></div>
       <div class="panel-body dice-stage">
         <div class="dice-orb idle" id="diceOrb">🎲</div>
-        <div class="dice-hint">点击下方按钮，投出本场临场状态。</div>
+        <div class="dice-hint">${noBad ? "🎴 好运签生效：今天稳了，发挥不会失常。" : "点击下方按钮，投出本场临场状态。"}</div>
       </div>
       <div class="choices"><button class="choice primary" id="rollBtn"><span class="cl">该你上场了！</span><span class="ch">投掷</span></button></div>`;
     $("#rollBtn").onclick = () => {
-      const r = E.rnd(-V, V);
+      // 好运签生效时浮动落点下限抬到 −V/3（必为稳定档及以上），UI 投掷流程与反馈不变。
+      const r = E.rollFluct(V, noBad);
       const fb = E.diceTier(r, V);
       // 立即揭晓结果（投掷悬念交给纯 CSS 入场动画，不依赖 JS 定时器，便于自动化测试稳定推进）。
       main().innerHTML = `
@@ -505,6 +514,7 @@ async function playMatch(stage, oppPopBase, winPop, opts = {}) {
   }
 
   const buff = P.nextGameBuff; P.nextGameBuff = 0;
+  const noBad = P.nextNoBadRoll; P.nextNoBadRoll = false;   // 好运签：本场临场发挥不会失常
   P.nextGameBuffUsed = buff > 0;
   const manual = E.isManualDiceStage(stage) && !fainted;
 
@@ -515,8 +525,8 @@ async function playMatch(stage, oppPopBase, winPop, opts = {}) {
   const s0 = snap();
 
   const runAttempt = async (redo) => {
-    const forcedR = manual ? await manualDiceRoll(P, redo) : null;
-    const { F, cheer } = E.computeF(P, stage, oppPopBase, curYear, oppBonus, fdelta, buff, forcedR);
+    const forcedR = manual ? await manualDiceRoll(P, redo, noBad) : null;
+    const { F, cheer } = E.computeF(P, stage, oppPopBase, curYear, oppBonus, fdelta, buff, forcedR, noBad);
     const { team, opp, win } = E.settleGame(P, stage, oppPopBase, winPop, curYear, F, fainted, oppBonus);
     renderHUD();
     return { F, cheer, team, opp, win };
@@ -568,6 +578,11 @@ async function regularSeason(kind) {
   setStage(`${kind}季赛·常规赛`);
   P.stamina = E.matchStartStamina(P); P.fired_events = new Set();
   renderHUD();                 // 进入比赛周期即时刷新体力（demov2.1feedback2）
+  // v6.5《demov2.2feedback》：常规赛不再直接开打，先给一个开赛说明界面 + 进入按钮。
+  await say(`${kind}季赛 · 常规赛`, `
+    <p class="flavor">${kind}季赛常规赛即将打响——9 场 BO3 定排名，<b>前 6 名</b>晋级双败淘汰季后赛。</p>
+    <p class="muted">当前体力 ${P.stamina.toFixed(0)} / ${P.stamina_max.toFixed(0)}${P.nextGameBuff ? `，预备 F buff +${P.nextGameBuff.toFixed(0)}` : ""}。可在右侧背包提前补给体力或叠加临场 buff。</p>`,
+    `进入${kind}季赛常规赛`);
   const lines = []; let wins = 0; let lastReason = null;
   for (let g = 1; g <= 9; g++) {
     const r = await playMatch("常规", E.OPP_POP["常规"], E.WIN_POP["常规"]);
@@ -919,6 +934,7 @@ async function yearIntro() {
   setStage("赛年开始");
   P.negative_news = false;                  // 负面新闻随时间(新赛年)消散
   if (curYear === 1) return;
+  P.advanceTeammate();                      // 战术驱动的队友配合逐年提升（封顶 +3/年，静默累积）
   await say(`赛年 ${curYear}（${curAge} 岁）`, `
     <p>新的一年开始了。商店已刷新，负面新闻随时间消散。</p>
     ${curYear >= 4 ? `<p class="muted">已进入成长衰减期：技术/体能成长 ×${E.growthTech(curYear).toFixed(2)}，战术 ×${E.growthTac(curYear).toFixed(2)}。靠道具/事件补满属性更重要。</p>` : ""}`, "查看赛季目标");
@@ -1027,8 +1043,9 @@ async function ending(grandSlam, forced, fullCareer) {
         <div class="rv-attrs">
           ${rvBar("技术", P.tech, "#f5cf6a")}${rvBar("战术", P.tac, "#6ea8fe")}
           ${rvBar("体能", P.phys, "#4ade80")}${rvBar("稳定", P.stab, "#c4a3f0")}
-          ${rvBar("容貌", P.appearance, "#f0a6c0")}
+          ${rvBar("容貌", P.appearance, "#f0a6c0")}${rvBar("运气", P.luck, "#e8a24b")}
         </div>
+        <p class="rv-luck">🍀 谜底揭晓：你这一生的<b>运气</b>是 <b>${P.luck.toFixed(0)}</b>／100——${luckFlavor(P.luck)}</p>
         <div class="rv-res">
           <span>人气 <b>${P.pop.toFixed(1)} 万</b></span>
           <span>资金 <b>${P.money.toFixed(0)} G</b></span>
@@ -1046,10 +1063,18 @@ async function ending(grandSlam, forced, fullCareer) {
   // 重开由顶层 gameLoop() 循环驱动，ending() 直接返回，避免调用栈无限增长。
 }
 function rvBar(k, v, c) { return `<div class="rvbar"><span>${k}</span><div class="rvtrack"><i style="width:${Math.min(100, v)}%;background:${c}"></i></div><b>${v.toFixed(0)}</b></div>`; }
+// 运气结局揭晓（v6.5《demov2.2feedback》）：运气全程隐藏，仅在生涯落幕时把本轮数值与一句注脚告诉玩家。
+function luckFlavor(v) {
+  if (v >= 85) return "天选之子，关键时刻总有人替你兜底。";
+  if (v >= 65) return "运气站在你这边，顺风局里如鱼得水。";
+  if (v >= 40) return "不好不坏，多数时候靠的还是真本事。";
+  if (v >= 20) return "时运多舛，不少硬仗都是逆着风打下来的。";
+  return "命途多舛——能走到这里，全凭一身骨气。";
+}
 
 /* ============================== 启动 ================================== */
 async function boot() {
-  await say("IVL 模拟器 · 可玩切片 demo-v2.2", `
+  await say("IVL 模拟器 · 可玩切片 demo-v2.3", `
     <p>欢迎来到《IVL 模拟器》可玩垂直切片。你将扮演一名《第五人格》职业电竞选手，从青训出道，征战 7 个赛年。</p>
     <ul class="intro">
       <li><b>赛季目标面板</b>：每年三类推荐目标（竞技/养成/风险）为你指路。</li>

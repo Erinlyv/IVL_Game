@@ -1,8 +1,14 @@
 /* =============================================================================
- * IVL 模拟器 · 引擎 (engine.js) · 垂直可玩切片 demo-v2.2
- * 严格移植自《测试脚本/montecarlo_ivl.py》（对齐《数值设计 v5.3》/
- * 《策划案 v6.4》/《文案设计 v1.2》）。把脚本里的"策略自动决策"替换为玩家点击，
+ * IVL 模拟器 · 引擎 (engine.js) · 垂直可玩切片 demo-v2.3
+ * 严格移植自《测试脚本/montecarlo_ivl.py》（对齐《数值设计 v5.4》/
+ * 《策划案 v6.5》/《文案设计 v1.3》）。把脚本里的"策略自动决策"替换为玩家点击，
  * 数值 / 公式逐项保持一致，使 demo 手感与已回归的平衡同源。
+ *
+ * v2.3 新增（相对 demo v2.2 / 对齐 v6.5·v5.4·v1.3《demov2.2feedback》）：
+ *   · 进入比赛期体力 = 现有体力 +60（封顶上限），不再回固定 70（训练周期开始仍回满）；
+ *   · 商店：护腕 500→300、战术分析仪 700→400；好运签新增「临场不会失常」（浮动下限抬到 −V/3）；
+ *   · 深渊小组赛 [58,74]→[50,72]、深渊总决赛 [70,82]→[65,82]（下限下调）；
+ *   · 运气结局揭晓（生涯回顾新增运气栏）、常规赛前新增开赛说明界面（UI 层，见 game.js）。
  *
  * v2.2 新增（相对 demo v2.1 / 对齐 v6.4·v5.3·v1.2）：
  *   ① 商店刷新规则：常规 9 件（属性成长 5 + 临场爆发 3 + 舆论处理 1）每次随机抽 5 上架、
@@ -63,8 +69,8 @@ const CONFIG = {
   // 商业休整
   REST_TRAIN_N: 3, REST_GROWTH_MULT: 0.8, REST_INJURY_MULT: 0.5, REST_POP_RANGE: [2, 5],
 
-  // 体力
-  GAME_STAMINA_COST: { "常规": 6 }, DEFAULT_GAME_STAMINA_COST: 10, MATCH_START: 70,
+  // 体力（v5.4：进入比赛期体力 = 现有体力 + MATCH_RECOVER，封顶上限，不再回固定 70）
+  GAME_STAMINA_COST: { "常规": 6 }, DEFAULT_GAME_STAMINA_COST: 10, MATCH_START: 70, MATCH_RECOVER: 60,
 
   ABYSS_SYNC_FATIGUE: 5,
 
@@ -83,10 +89,22 @@ const CONFIG = {
 
   TRANSFER_P_BASE: 0.08, TRANSFER_P_HIGH: 0.12, TRANSFER_PERF_SELL: 0.40,
   TEAMMATE_IN_P: 0.12, TEAMMATE_OUT_P: 0.12, OTHER_TEAM_P: 0.25,
+  // 队友强度（v5.4）：开局基准随机抽样，之后由战术驱动逐年累积，封顶 80。
+  TEAM_BASE_RANGE: [50, 68],   // 开局队友强度基准随机区间（掷一次，固定）
+  TEAM_TAC_GAIN_CAP: 3,        // 战术驱动的队友强度单年提升上限
+  TEAM_NPC_CAP: 74,            // 队友强度总封顶（v5.4：80→74，收敛极限档决胜场胜率上抬）
 };
 
 function selectThreshold(year) { return 32 + (year - 1) * 2.5; }
-function npcSelf(year) { return Math.min(68, 58 + (year - 1)); }
+// 战术 → 队友强度单年提升（分档、单调、封顶 CONFIG.TEAM_TAC_GAIN_CAP）。
+function teammateYearGain(tac) {
+  let g;
+  if (tac < 50) { g = 0; }
+  else if (tac < 65) { g = 1; }
+  else if (tac < 80) { g = 2; }
+  else { g = 3; }
+  return Math.min(CONFIG.TEAM_TAC_GAIN_CAP, g);
+}
 function growthTech(year) { return year <= 3 ? 1.0 : Math.max(0.60, 1 - 0.05 * (year - 3)); }
 const growthPhys = growthTech;
 function growthTac(year) { return year <= 3 ? 1.0 : Math.max(0.75, 1 - 0.03 * (year - 3)); }
@@ -102,8 +120,8 @@ function sampleOpp(stage, year, extra = 0) {
   if (stage === "季后") return rnd(65, 83) + d;
   if (stage === "IVS") return rnd(70, 84) + d;
   if (stage === "预选") return rnd(44, 64) + d;
-  if (stage === "小组") return rnd(58, 74) + d;
-  if (stage === "总决") return rnd(70, 82) + d;
+  if (stage === "小组") return rnd(50, 72) + d;   // v5.4：下限下调（demov2.2feedback），[58,74]→[50,72]
+  if (stage === "总决") return rnd(65, 82) + d;   // v5.4：下限下调，[70,82]→[65,82]
   throw new Error("unknown stage " + stage);
 }
 
@@ -117,15 +135,15 @@ const SHOP_ITEMS = [
     desc: "体力 +30（可携带，比赛/训练中使用）", tag: "小口回血，大场面不掉链子" },
   { name: "筋膜枪", price: 300, qty: 3, kind: "consume", slot: "stam", val: 60, group: "体力恢复",
     desc: "体力 +60（可携带）", tag: "赛前十分钟，续命一整场" },
-  { name: "护腕", price: 500, qty: 1, kind: "wrist", group: "伤病防护",
+  { name: "护腕", price: 300, qty: 1, kind: "wrist", group: "伤病防护",
     desc: "当年比赛受伤概率 ×0.4（可与体检叠加）", tag: "电竞选手的手是第二个心脏" },
   { name: "经纪团队体检", price: 600, qty: 1, kind: "checkup", group: "伤病防护",
     desc: "当年伤病判定概率 ×0.4（训练+比赛，可与护腕叠加）", tag: "定期体检，是对热度最划算的投资" },
   { name: "理疗康复套餐", price: 600, qty: 2, kind: "consume", slot: "heal", group: "伤病防护",
     desc: "清除腱鞘炎/临时伤病（可携带）", tag: "腱鞘炎唯一指定救星。疼痛可以忍，职业生涯不能赌。" },
-  { name: "好运签", price: 500, qty: 2, kind: "consume", slot: "fbuff", val: 8, group: "临场爆发",
-    desc: "下一场比赛 F +8（可携带）", tag: "玄学不一定有用，但冠军都信一点" },
-  { name: "战术分析仪", price: 700, qty: 1, kind: "consume", slot: "fbuff", val: 6, group: "临场爆发",
+  { name: "好运签", price: 500, qty: 2, kind: "consume", slot: "fbuff", val: 8, noBadRoll: true, group: "临场爆发",
+    desc: "下一场比赛 F +8，且临场发挥必为「稳定」及以上（不会掷出失常档）（可携带）", tag: "玄学不一定有用，但冠军都信一点" },
+  { name: "战术分析仪", price: 400, qty: 1, kind: "consume", slot: "fbuff", val: 6, group: "临场爆发",
     desc: "下一场 F +6（可携带）", tag: "比对手早看懂一回合" },
   { name: "定制应援物料", price: 400, qty: 2, kind: "consume", slot: "fbuff", val: 5, pop: 0.5, group: "临场爆发",
     desc: "下一场 F +5、人气 +0.5（可携带）", tag: "灯牌亮起来的那一刻，主场就不只是地图，而是站在你身后的海。" },
@@ -228,6 +246,7 @@ class Player {
     this.negative_news = false;
     this.ever_negative = false;
     this.nextGameBuff = 0;            // 道具临时 F buff，下一场生效后清零
+    this.nextNoBadRoll = false;       // 好运签：下一场临场发挥必为稳定档及以上（不掷出失常）
     this._abyss_fatigue = 0;
     this.inj_train_mult = 1.0;        // 体检预警·硬扛：当周期伤病概率 ×1.5
 
@@ -248,7 +267,9 @@ class Player {
 
     // 转会 / 战队
     this.transfer_count = 0;
-    this.npc_offset = 0;
+    this.npc_base = rnd(CONFIG.TEAM_BASE_RANGE[0], CONFIG.TEAM_BASE_RANGE[1]);  // 开局队友强度基准（随机，固定）
+    this.npc_growth = 0;            // 战术驱动的逐年累积提升（见 advanceTeammate）
+    this.npc_offset = 0;            // 转会进出 / 玩家转会带来的偏移
     this.opp_delta_extra = 0;
     this.recent_perf = 1.0;
 
@@ -298,7 +319,9 @@ class Player {
     return this.tech * CONFIG.W_TECH + this.tac * CONFIG.W_TAC +
            this.phys * CONFIG.W_PHYS + this.stab * CONFIG.W_STAB;
   }
-  teamNpc(year) { return clamp(npcSelf(year) + this.npc_offset, 40, 80); }
+  teamNpc(_year) { return clamp(this.npc_base + this.npc_growth + this.npc_offset, 40, CONFIG.TEAM_NPC_CAP); }
+  // 每个新赛年（第 2 赛年起）调用一次：战术越高，队伍配合提升越多（单年封顶）。返回本年提升量。
+  advanceTeammate() { const g = teammateYearGain(this.tac); this.npc_growth += g; return g; }
   addPop(base) { this.pop += base * this.pop_mult; }
   grow(attr, amount) {
     if (amount <= 0) { this[attr] = Math.max(0, this[attr] + amount); return; }
@@ -356,8 +379,10 @@ function applyTraining(p, proj, intensity, year) {
 }
 
 /* ------------------------------- 比赛 ---------------------------------- */
-const MATCH_START_FLAT = CONFIG.MATCH_START;            // 进入比赛日体力回到 70
-function matchStartStamina(p) { return Math.min(p.stamina_max, MATCH_START_FLAT); }
+/* v6.5 / v5.4《demov2.2feedback》：进入比赛期（训练→比赛、常规赛→季后赛 等）体力恢复改为
+ * 在「现有体力」基础上 +MATCH_RECOVER（封顶不超过体力上限），不再回到固定 70；训练周期开始仍回满。 */
+const MATCH_RECOVER = CONFIG.MATCH_RECOVER;             // 进入比赛日：现有体力 +60（封顶上限）
+function matchStartStamina(p) { return Math.min(p.stamina_max, p.stamina + MATCH_RECOVER); }
 function gameCost(stage) { return CONFIG.GAME_STAMINA_COST[stage] || CONFIG.DEFAULT_GAME_STAMINA_COST; }
 function luckCheck(p) { return p.luck + rnd(0, 40) >= 70; }
 
@@ -462,13 +487,20 @@ function diceTier(r, V) {
   return { tier: d.tier, group: d.group, sub: d.sub, text: choiceOf(d.pool) };
 }
 
+/* 好运签「不会失常」下限（v6.5 / v5.4《demov2.2feedback》）：把浮动落点抬到第 3 档（稳定）的下边界。
+ * 六等分中 tier≥3 等价 r ≥ −V/3；故好运签生效时浮动改在 [−V/3, +V] 取，区间内仍随机但不会落入失常档。 */
+function noBadFloor(V) { return -V / 3; }
+/* 生成本场随机浮动 r：好运签生效(noBadRoll)时下限抬到 −V/3，否则全幅 [−V,+V]。 */
+function rollFluct(V, noBadRoll) { return noBadRoll ? rnd(noBadFloor(V), V) : rnd(-V, V); }
+
 // 计算本场 F(吃完事件 fdelta + 道具 buff)。
-// forcedRfloat 非空时使用玩家手动掷出的随机浮动（区间/分布不变，仅取值来源不同）。
-function computeF(p, stage, oppPopBase, year, oppBonus, fdelta, buff, forcedRfloat) {
+// forcedRfloat 非空时使用玩家手动掷出的随机浮动（区间/分布不变，仅取值来源不同）；
+// noBadRoll=true（好运签）时，系统自动取值的下限抬到 −V/3（必为稳定及以上）。
+function computeF(p, stage, oppPopBase, year, oppBonus, fdelta, buff, forcedRfloat, noBadRoll) {
   const cp = p.cp;
   const luckOff = (p.luck - 50) * 0.10;
   const V = fluctV(p);
-  const rfloat = (forcedRfloat === undefined || forcedRfloat === null) ? rnd(-V, V) : forcedRfloat;
+  const rfloat = (forcedRfloat === undefined || forcedRfloat === null) ? rollFluct(V, noBadRoll) : forcedRfloat;
   const diff = p.pop - oppPopBase;
   const cheer = diff >= 80 ? 5 : (diff >= 30 ? 3 : 0);
   let inner = cp + luckOff + rfloat + cheer + fdelta + buff;
@@ -976,7 +1008,7 @@ window.IVL = {
   selectThreshold, npcSelf, growthTech, growthTac, growthPhys, oppDelta, sampleOpp, popThr3,
   applyTraining, tenoProb, rollInjury, healInjury, endCompetition,
   matchStartStamina, gameCost, luckCheck, rollMatchEvent, computeF, settleGame,
-  fluctV, isManualDiceStage, diceTier, DICE_FEEDBACK,
+  fluctV, isManualDiceStage, diceTier, DICE_FEEDBACK, noBadFloor, rollFluct,
   teammateAvgs, checkFMVP, settleChamp, settleRunnerup, settleThird, maxRunTrue,
   specialTriggers, commercialRestEligible, transferRollForced, doTransfer, transferAmbient,
   annualAwards, reasonTags, pickReason, fmvpSpeech, FMVP_POEMS,
