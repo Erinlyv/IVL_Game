@@ -81,7 +81,7 @@ function clickOne() {
   // 4) 通用选项
   const choices = qa("#choices .choice").filter(b => !b.disabled);
   if (choices.length) {
-    const en = q(".ending-name");
+    const en = q(".wc-ending-name");
     if (en) { if (!inEnding) { inEnding = true; endings.push(en.textContent); } }
     else { inEnding = false; }
     choices[Math.floor(Math.random() * choices.length)].click();

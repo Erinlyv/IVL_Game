@@ -1,14 +1,16 @@
 /* =============================================================================
- * IVL 模拟器 · 交互编排 + UI (game.js) · 垂直可玩切片 demo-v2.3
+ * IVL 模拟器 · 交互编排 + UI (game.js) · 垂直可玩切片 demo-v3.0
  * 把已回归引擎(engine.js)的"自动决策"换成玩家点击：角色创建 → 7 赛年
- * (赛季目标面板 / 训练 / 突发事件 / 商店 / 双败季后赛 / IVS / 深渊含季军赛 /
- *  转会 / 年度评选 / 商业休整) → v6.3 结局成就。
+ * (赛季目标面板 / 训练 / 突发事件 / 商店 / 季后赛 / IVS / 深渊含季军赛 /
+ *  转会 / 年度评选 / 商业休整) → 结局成就。
  *
- * v2.3 新增（对齐《策划案 v6.5》/《数值设计 v5.4》/《文案设计 v1.3》《demov2.2feedback》）：
- *   · 进入比赛期体力 = 现有体力 +60（封顶上限）；护腕 300 / 战术分析仪 400；
- *   · 好运签新增「临场不会失常」（掷骰浮动下限抬到 −V/3）；
- *   · 深渊小组 [50,72] / 总决 [65,82] 下限下调；
- *   · 常规赛前新增开赛说明界面 + 进入按钮；结局生涯回顾揭晓本轮「运气」值。
+ * v3.0 新增（对齐《策划案 v7.0》/《数值设计 v6.0》/《文案设计 v2.0》《demov2.3feedback》）：
+ *   · 冠军同年同步疲劳重做（每多 1 冠 −2/场、封顶 −6）；庄园密信改「减免所有冠军疲劳」；
+ *   · 容貌驱动商业类训练事件触发概率（pickTrainingEvent 加权抽取，商业休整年再 ×2.5）；
+ *   · 对手基准区间重校（常规 33/60·45/74、IVS [60,84]、深渊总决 [65,85]）；
+ *   · 训练事件 23 件 + 赛事名场面 5 件（赛后按发挥小概率触发，纯叙事彩蛋）；
+ *   · 季后赛进入按钮文案：「进入双败季后赛」→「进入季后赛」；
+ *   · 生涯战报卡（可截图分享 / 复制文案）、全部结局与成就一览、localStorage 本地存档。
  *
  * v2.2 新增（对齐《策划案 v6.4》/《数值设计 v5.3》/《文案设计 v1.2》）：
  *   · 商店刷新：常驻基础 + 9 抽 5 常规 + 8% 命中稀缺抽 1（后悔药 / 庄园密信 / 骨龄逆转血清）；
@@ -377,7 +379,8 @@ async function trainingPeriod(n, periodLabel) {
 }
 
 async function trainingEvent() {
-  const key = E.choiceOf(E.TRAIN_EVENT_KEYS);
+  // v6.0：按权重抽取（容貌越高、商业休整年越易抽到商业类事件）。
+  const key = E.pickTrainingEvent(P);
   const ev = E.TRAIN_EVENTS[key];
   // feedback15: 选项不带 hint(数值)
   const idx = await choose(`突发事件 · ${key}`, `<p class="flavor">${ev.flavor}</p>`,
@@ -445,7 +448,7 @@ function buy(it, render) {
   else if (it.kind === "checkup") { P.has_checkup = true; flash("经纪团队体检：本年受伤概率 ×0.4（可叠加护腕）"); }
   else if (it.kind === "clear") { P.negative_news = false; flash("公关出手：负面新闻已清除"); }
   else if (it.kind === "redo") { P.redo_token += 1; flash("后悔药入手：本赛年可重打一场失利"); }
-  else if (it.kind === "seal") { P.has_seal = true; flash("庄园密信入手：本年深渊抵消一次同步疲劳"); }
+  else if (it.kind === "seal") { P.has_seal = true; flash("庄园密信入手：本年深渊减免所有冠军疲劳"); }
   else if (it.kind === "serum") { P.serum_active = true; flash("骨龄逆转血清生效：本赛年抹平年龄衰减"); }
   else if (it.kind === "consume") { P.inv[it.name] = (P.inv[it.name] || 0) + 1; flash(`购入${it.name}，已进背包`); }
   renderHUD(); render();
@@ -526,10 +529,10 @@ async function playMatch(stage, oppPopBase, winPop, opts = {}) {
 
   const runAttempt = async (redo) => {
     const forcedR = manual ? await manualDiceRoll(P, redo, noBad) : null;
-    const { F, cheer } = E.computeF(P, stage, oppPopBase, curYear, oppBonus, fdelta, buff, forcedR, noBad);
+    const { F, cheer, rfloat, V } = E.computeF(P, stage, oppPopBase, curYear, oppBonus, fdelta, buff, forcedR, noBad);
     const { team, opp, win } = E.settleGame(P, stage, oppPopBase, winPop, curYear, F, fainted, oppBonus);
     renderHUD();
-    return { F, cheer, team, opp, win };
+    return { F, cheer, team, opp, win, rfloat, V };
   };
 
   let a = await runAttempt(false);
@@ -553,9 +556,19 @@ async function playMatch(stage, oppPopBase, winPop, opts = {}) {
   const reason = E.pickReason(tags, win);
   P.nextGameBuffUsed = false;
 
+  // v6.0 赛事名场面（纯叙事彩蛋）：失常 = 随机浮动落 1-2 档（r < −V/3）；命中则结算并弹出彩蛋页。
+  const abnormal = a.rfloat < -a.V / 3;
+  const spot = E.rollSpotlight(P, win, abnormal);
+  if (spot) {
+    renderHUD();
+    pushLog(`赛事名场面 · ${spot.name}（人气 +2、稳定 +2）`, "good");
+    await say(spot.title, `<p class="flavor">${spot.text}</p><p class="ok">这一幕被定格为赛事名场面 —— 人气 +2、稳定 +2。</p>`, "笑纳这波热度");
+  }
+
   let line = `${win ? "✔ 胜" : "✘ 负"}　你 ${F.toFixed(0)}（队 ${team.toFixed(0)}）vs 对手 ${opp.toFixed(0)}`;
   if (fainted) line = `✘ 体力清零·晕倒判负　对手 ${opp.toFixed(0)}`;
-  return { win, F, team, opp, line, eventNarr, reason, fainted };
+  if (spot) line += `　🎬 名场面「${spot.name}」`;
+  return { win, F, team, opp, line, eventNarr, reason, fainted, spot };
 }
 
 // 赛事开始前的一次伤病掷骰(比赛口径)
@@ -709,7 +722,7 @@ async function playDomestic(kind) {
   const { rank, inPlayoff } = await regularSeason(kind);
   if (!inPlayoff) { E.endCompetition(P); return 8; }
   P.playoff_count += 1;
-  await say(`${kind}季赛 · 季后赛`, `<p class="flavor">常规赛尘埃落定，真正的淘汰赛才刚刚开始。从这里起，输一场，可能就是一整年的结束。</p>`, "进入双败季后赛");
+  await say(`${kind}季赛 · 季后赛`, `<p class="flavor">常规赛尘埃落定，真正的淘汰赛才刚刚开始。从这里起，输一场，可能就是一整年的结束。</p>`, "进入季后赛");
   const { place, fList } = await playDomesticPlayoff(kind, rank);
   P.recent_perf = place === 1 ? 1.0 : 0.5;
   await settlePlacement(kind, place, fList);
@@ -744,21 +757,21 @@ async function playIVS() {
 
 async function playAbyss(seeded) {
   await competitionInjury("深渊");
-  // 庄园密信（v6.4 / v5.3 §九·稀缺）：进深渊前抵消 1 项金满贯同年同步疲劳（少计 1 冠的 −ABYSS_SYNC_FATIGUE/场）。
+  // 庄园密信（v6.0 增强）：进深渊前减免所有冠军疲劳——当年累积的全部金满贯同步疲劳一次性清零。
   if (P.has_seal && P._abyss_fatigue > 0) {
     const before = P._abyss_fatigue;
-    P._abyss_fatigue = Math.max(0, P._abyss_fatigue - E.CONFIG.ABYSS_SYNC_FATIGUE);
+    P._abyss_fatigue = 0;
     P.has_seal = false;
     renderHUD();
-    pushLog(`庄园密信生效：同步疲劳 −${(before - P._abyss_fatigue).toFixed(0)}。`, "good");
+    pushLog(`庄园密信生效：减免所有冠军疲劳（同步疲劳 −${before.toFixed(0)} → 0）。`, "good");
     await say("庄园密信 · 特赦令", `
-      <p class="flavor">横扫赛季的疲惫，由这封密信替你扛下。深渊里，你还是满状态的那个你。</p>
-      <p>同年同步疲劳抵消 1 冠：深渊每场 F 回补 <b>+${(before - P._abyss_fatigue).toFixed(0)}</b>${P._abyss_fatigue > 0 ? `，剩余每场 −${P._abyss_fatigue.toFixed(0)}` : "，本年深渊已无同步疲劳"}。</p>`, "继续");
+      <p class="flavor">横扫赛季的疲惫，由这封密信替你全数扛下。深渊里，你还是满状态的那个你。</p>
+      <p>减免所有冠军疲劳：深渊每场 F 回补 <b>+${before.toFixed(0)}</b>，本年深渊已无任何同步疲劳。</p>`, "继续");
   }
   await say("深渊的呼唤 · 全球赛", `
     <p class="flavor">深渊的呼唤——全球最高规格的舞台。能站在这里的，没有一个是弱者。</p>
     <p>${seeded ? "凭借国内季后赛的出色表现，你被<b>保送小组赛</b>，跳过预选！" : "你需要先从预选赛打起（2 场，胜 ≥1 进小组）。"}</p>
-    ${P._abyss_fatigue > 0 ? `<p class="muted">⚠ 同年同步疲劳：本年深渊前已夺 ${(P._abyss_fatigue / E.CONFIG.ABYSS_SYNC_FATIGUE).toFixed(0)} 冠，深渊每场 F −${P._abyss_fatigue.toFixed(0)}。</p>` : ""}`, "进入深渊");
+    ${P._abyss_fatigue > 0 ? `<p class="muted">⚠ 同年同步疲劳：本年深渊前已夺 ${(P._abyss_fatigue / E.CONFIG.ABYSS_SYNC_FATIGUE_PER).toFixed(0)} 冠，深渊每场 F −${P._abyss_fatigue.toFixed(0)}（每多 1 冠 −2，封顶 −6）。</p>` : ""}`, "进入深渊");
 
   if (!seeded) {
     const pre = await playSeries("预选", 2, E.OPP_POP["深渊"], E.WIN_POP["预选"], false, "深渊·预选赛");
@@ -981,7 +994,8 @@ async function career() {
 
       if (await selection("深渊")) {
         const seeded = (summerRank + autumnRank) / 2.0 <= 2.0;
-        P._abyss_fatigue = E.CONFIG.ABYSS_SYNC_FATIGUE * yc.size;
+        // v6.0：每多 1 冠 −2/场，整场封顶 −6。
+        P._abyss_fatigue = Math.min(E.CONFIG.ABYSS_SYNC_FATIGUE_CAP, E.CONFIG.ABYSS_SYNC_FATIGUE_PER * yc.size);
         const b = P.champ["深渊"]; await playAbyss(seeded); P._abyss_fatigue = 0;
         if (P.champ["深渊"] > b) yc.add("深渊");
       }
@@ -1022,45 +1036,177 @@ async function ending(grandSlam, forced, fullCareer) {
   pushLog(`生涯结束：${finalName}`, isForced ? "bad" : "good");
 
   const got = Object.keys(ach).filter(k => ach[k]);
-  // feedback14 / 文案 §13.3：结局界面成就过多，只列名称、不再为每个成就配文案。
-  const achHtml = got.length
-    ? got.map(a => `<span class="achname">${a}</span>`).join("")
-    : `<div class="ach muted">本周目未解锁成就。</div>`;
-  const champLine = `夏 ${P.champ["夏"]}　秋 ${P.champ["秋"]}　IVS ${P.champ["IVS"]}　深渊 ${P.champ["深渊"]}　｜　亚 ${P.runnerups}　季 ${P.thirds}　FMVP ${P.fmvp_total}`;
-  // 断开链接文案占位「玩家ID」替换为玩家实际选手 ID（第五人格匹配梗）。
-  const endingText = (E.ENDING_TEXT[finalName] || "").replace("玩家ID", P.playerId);
+  // 生涯战报卡数据（v3.0）：用于可截图分享 + 持久化存档。
+  const rec = {
+    v: 3, name: P.name, playerId: P.playerId, teamName: P.teamName,
+    role: P.role, idShort: idShort(P), final: finalName, kind: isForced ? "forced" : (isSpecial ? "special" : "final"),
+    fullCareer, tech: P.tech, tac: P.tac, phys: P.phys, stab: P.stab,
+    appearance: P.appearance, luck: P.luck, pop: P.pop, money: P.money,
+    champ: { ...P.champ }, runnerups: P.runnerups, thirds: P.thirds, fmvp_total: P.fmvp_total,
+    playoff_count: P.playoff_count, transfer_count: P.transfer_count, rest_year_count: P.rest_year_count,
+    spotlights: [...P.spotlight], achs: got, date: new Date().toLocaleDateString("zh-CN"),
+  };
+  // 持久化（v3.0）：localStorage 存当前周目战报 + 累计成就/结局图鉴（历史解锁）。
+  const codex = persistRun(rec);
 
-  await present({
-    title: `结局 · ${finalName}`,
-    sub: isForced ? "强制结局" : (isSpecial ? "你主动接受了人生岔路" : (fullCareer ? "满 7 赛年 · 最终结局" : "生涯落幕")),
-    body: `
-      <div class="ending ${isForced ? "bad" : "good"}">
-        <div class="ending-name">${finalName}</div>
-        <p class="ending-text">${endingText}</p>
-      </div>
-      <h3 class="rv">生涯回顾 · ${P.name}（${idShort(P)}·${P.role}）</h3>
-      <div class="review">
-        <div class="rv-attrs">
-          ${rvBar("技术", P.tech, "#f5cf6a")}${rvBar("战术", P.tac, "#6ea8fe")}
-          ${rvBar("体能", P.phys, "#4ade80")}${rvBar("稳定", P.stab, "#c4a3f0")}
-          ${rvBar("容貌", P.appearance, "#f0a6c0")}${rvBar("运气", P.luck, "#e8a24b")}
-        </div>
-        <p class="rv-luck">🍀 谜底揭晓：你这一生的<b>运气</b>是 <b>${P.luck.toFixed(0)}</b>／100——${luckFlavor(P.luck)}</p>
-        <div class="rv-res">
-          <span>人气 <b>${P.pop.toFixed(1)} 万</b></span>
-          <span>资金 <b>${P.money.toFixed(0)} G</b></span>
-          <span>进季后 <b>${P.playoff_count}</b></span>
-          <span>转会 <b>${P.transfer_count}</b></span>
-          <span>休整年 <b>${P.rest_year_count}</b></span>
-        </div>
-        <div class="rv-champ">🏆 ${champLine}</div>
-      </div>
-      <h3 class="rv">解锁成就（${got.length}）</h3>
-      <div class="achnames">${achHtml}</div>`,
-    choices: [{ label: "🔄 再来一局", cls: "primary" }],
-  });
+  // 结局界面循环：再来一局退出；其余按钮看完返回本页。feedback14：成就仅列名称。
+  while (true) {
+    setStage("生涯落幕");
+    const choice = await present({
+      title: `结局 · ${finalName}`,
+      sub: isForced ? "强制结局" : (isSpecial ? "你主动接受了人生岔路" : (fullCareer ? "满 7 赛年 · 最终结局" : "生涯落幕")),
+      body: warCardHtml(rec, isForced) + `
+        <p class="muted sharehint">📸 截图保存这张战报卡，晒到同人圈吧！或点「复制战报文案」一键带走。</p>`,
+      choices: [
+        { label: "🏆 全部结局与成就", cls: "ghost" },
+        { label: "📋 复制战报文案", cls: "ghost" },
+        { label: "🔄 再来一局", cls: "primary" },
+      ],
+    });
+    if (choice === 0) { await codexPanel(rec, codex); continue; }
+    if (choice === 1) { await copyWarCard(rec); continue; }
+    break;
+  }
   logLines = []; P = null; renderHUD();
   // 重开由顶层 gameLoop() 循环驱动，ending() 直接返回，避免调用栈无限增长。
+}
+
+/* ----------------------- 生涯战报卡（v3.0 · 可截图分享） --------------------- */
+function warCardHtml(rec, isForced) {
+  const endingText = (E.ENDING_TEXT[rec.final] || "").replace("玩家ID", rec.playerId);
+  const champLine = `夏 ${rec.champ["夏"]}　秋 ${rec.champ["秋"]}　IVS ${rec.champ["IVS"]}　深渊 ${rec.champ["深渊"]}`;
+  const achHtml = rec.achs.length
+    ? rec.achs.map(a => `<span class="achname">${a}</span>`).join("")
+    : `<span class="ach muted">本周目未解锁成就</span>`;
+  const spotHtml = rec.spotlights.length
+    ? `<div class="wc-spot">🎬 名场面：${rec.spotlights.join("、")}</div>` : "";
+  return `
+    <div class="warcard ${isForced ? "bad" : "good"}" id="warcard">
+      <div class="wc-top">
+        <div class="wc-badge">IVL 生涯战报</div>
+        <div class="wc-date">${rec.date}</div>
+      </div>
+      <div class="wc-name">${rec.name}<span class="wc-role">${rec.idShort}·${rec.role}</span></div>
+      <div class="wc-ending">
+        <div class="wc-ending-name">${rec.final}</div>
+        <p class="wc-ending-text">${endingText}</p>
+      </div>
+      <div class="wc-attrs">
+        ${rvBar("技术", rec.tech, "#f5cf6a")}${rvBar("战术", rec.tac, "#6ea8fe")}
+        ${rvBar("体能", rec.phys, "#4ade80")}${rvBar("稳定", rec.stab, "#c4a3f0")}
+        ${rvBar("容貌", rec.appearance, "#f0a6c0")}${rvBar("运气", rec.luck, "#e8a24b")}
+      </div>
+      <p class="wc-luck">🍀 运气揭晓：<b>${rec.luck.toFixed(0)}</b>／100 —— ${luckFlavor(rec.luck)}</p>
+      <div class="wc-res">
+        <span>人气 <b>${rec.pop.toFixed(1)} 万</b></span>
+        <span>资金 <b>${rec.money.toFixed(0)} G</b></span>
+        <span>进季后 <b>${rec.playoff_count}</b></span>
+        <span>转会 <b>${rec.transfer_count}</b></span>
+        <span>休整年 <b>${rec.rest_year_count}</b></span>
+      </div>
+      <div class="wc-champ">🏆 ${champLine}　｜　亚 ${rec.runnerups}　季 ${rec.thirds}　FMVP ${rec.fmvp_total}</div>
+      ${spotHtml}
+      <div class="wc-ach-title">解锁成就（${rec.achs.length}）</div>
+      <div class="achnames">${achHtml}</div>
+      <div class="wc-foot">#IVL模拟器 · demo-v3.0</div>
+    </div>`;
+}
+
+// 战报文案（纯文本）：复制到剪贴板，方便发帖/分享（剪贴板不可用时回退到弹窗提示）。
+function warCardText(rec) {
+  const champLine = `夏${rec.champ["夏"]}/秋${rec.champ["秋"]}/IVS${rec.champ["IVS"]}/深渊${rec.champ["深渊"]}`;
+  const lines = [
+    `【IVL 生涯战报 · ${rec.date}】`,
+    `选手：${rec.name}（${rec.idShort}·${rec.role}）`,
+    `结局：${rec.final}`,
+    `属性 技${rec.tech.toFixed(0)}/战${rec.tac.toFixed(0)}/体${rec.phys.toFixed(0)}/稳${rec.stab.toFixed(0)} · 容貌${rec.appearance.toFixed(0)} · 运气${rec.luck.toFixed(0)}`,
+    `人气 ${rec.pop.toFixed(1)}万 · 资金 ${rec.money.toFixed(0)}G · 进季后 ${rec.playoff_count} 次`,
+    `冠军 ${champLine} · 亚${rec.runnerups}/季${rec.thirds} · FMVP ${rec.fmvp_total}`,
+  ];
+  if (rec.spotlights.length) lines.push(`名场面：${rec.spotlights.join("、")}`);
+  lines.push(`解锁成就（${rec.achs.length}）：${rec.achs.join("、") || "无"}`);
+  lines.push(`#IVL模拟器 demo-v3.0`);
+  return lines.join("\n");
+}
+
+async function copyWarCard(rec) {
+  const txt = warCardText(rec);
+  let ok = false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(txt);
+      ok = true;
+    }
+  } catch (e) {
+    console.warn("复制到剪贴板失败，回退到手动复制：", e);
+  }
+  await say("战报文案", `${ok ? `<p class="ok">已复制到剪贴板，去粘贴分享吧！</p>` : `<p class="muted">浏览器未授权剪贴板，请手动全选复制下方文案：</p>`}
+    <pre class="warcard-text">${txt.replace(/</g, "&lt;")}</pre>`, "返回结局");
+}
+
+/* ----------------------- 全部结局与成就一览（v3.0） --------------------- *
+ * 列出全部结局与成就，highlight 玩家本档解锁的项，并标注历史(往期周目)曾解锁的项。 */
+async function codexPanel(rec, codex) {
+  setStage("结局与成就一览");
+  const allEndings = Object.keys(E.ENDING_TEXT);
+  const allAch = Object.keys(E.ACH_DESC);
+  const endingCells = allEndings.map(name => {
+    const here = name === rec.final;
+    const ever = (codex.endings || []).includes(name);
+    const cls = here ? "cx-here" : (ever ? "cx-ever" : "cx-lock");
+    const tag = here ? "本档" : (ever ? "已解锁" : "未解锁");
+    return `<div class="cx-cell ${cls}"><div class="cx-name">${name}</div>
+      <div class="cx-desc">${(E.ENDING_TEXT[name] || "").replace("玩家ID", rec.playerId)}</div>
+      <div class="cx-tag">${tag}</div></div>`;
+  }).join("");
+  const achCells = allAch.map(name => {
+    const here = rec.achs.includes(name);
+    const ever = (codex.achs || []).includes(name);
+    const cls = here ? "cx-here" : (ever ? "cx-ever" : "cx-lock");
+    const tag = here ? "本档" : (ever ? "已解锁" : "未解锁");
+    return `<div class="cx-cell ${cls}"><div class="cx-name">${name}</div>
+      <div class="cx-desc">${E.ACH_DESC[name] || ""}</div>
+      <div class="cx-tag">${tag}</div></div>`;
+  }).join("");
+  const eUnlocked = (codex.endings || []).length, aUnlocked = (codex.achs || []).length;
+  await present({
+    title: "全部结局与成就一览",
+    sub: `结局 ${eUnlocked}/${allEndings.length} · 成就 ${aUnlocked}/${allAch.length}（含历史周目累计）。高亮为本档解锁。`,
+    body: `
+      <h3 class="rv">结局（${allEndings.length}）</h3>
+      <div class="cx-grid">${endingCells}</div>
+      <h3 class="rv">成就（${allAch.length}）</h3>
+      <div class="cx-grid">${achCells}</div>`,
+    choices: [{ label: "← 返回结局", cls: "primary" }],
+  });
+}
+
+/* ----------------------- 持久化存档（v3.0 · localStorage） --------------------- *
+ * 存当前周目战报 + 累计结局/成就图鉴（历史解锁）。读写失败仅告警、不影响主流程。 */
+const SAVE_KEY = "ivl_save_v3";
+function loadCodex() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return { endings: [], achs: [], last: null, runs: 0 };
+    const c = JSON.parse(raw);
+    return { endings: c.endings || [], achs: c.achs || [], last: c.last || null, runs: c.runs || 0 };
+  } catch (e) {
+    console.warn("读取存档失败，使用空图鉴：", e);
+    return { endings: [], achs: [], last: null, runs: 0 };
+  }
+}
+function persistRun(rec) {
+  const c = loadCodex();
+  if (!c.endings.includes(rec.final)) c.endings.push(rec.final);
+  for (const a of rec.achs) if (!c.achs.includes(a)) c.achs.push(a);
+  c.last = rec;
+  c.runs = (c.runs || 0) + 1;
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(c));
+  } catch (e) {
+    console.warn("写入存档失败（不影响本局）：", e);
+  }
+  return c;
 }
 function rvBar(k, v, c) { return `<div class="rvbar"><span>${k}</span><div class="rvtrack"><i style="width:${Math.min(100, v)}%;background:${c}"></i></div><b>${v.toFixed(0)}</b></div>`; }
 // 运气结局揭晓（v6.5《demov2.2feedback》）：运气全程隐藏，仅在生涯落幕时把本轮数值与一句注脚告诉玩家。
@@ -1074,18 +1220,42 @@ function luckFlavor(v) {
 
 /* ============================== 启动 ================================== */
 async function boot() {
-  await say("IVL 模拟器 · 可玩切片 demo-v2.3", `
-    <p>欢迎来到《IVL 模拟器》可玩垂直切片。你将扮演一名《第五人格》职业电竞选手，从青训出道，征战 7 个赛年。</p>
-    <ul class="intro">
-      <li><b>赛季目标面板</b>：每年三类推荐目标（竞技/养成/风险）为你指路。</li>
-      <li><b>训练养成 + 突发事件</b>：选项不预告数值，选完才公布结果（凭直觉抉择）。</li>
-      <li><b>伤病系统</b>：临时伤病 / 腱鞘炎 / 伤重退役，靠护腕·体检·理疗·商业休整对抗。</li>
-      <li><b>赛事模拟</b>：夏/秋季赛<b>双败季后赛</b>、IVS、深渊全球赛（含<b>季军赛</b>），赛后一句话因果解释。</li>
-      <li><b>年度商店（v2.2）</b>：每年随机上架，常规 9 件抽 5，<b>8% 概率</b>现身后悔药 / 庄园密信 / 骨龄逆转血清等限定爆品。</li>
-      <li><b>该你上场了！（v2.2）</b>：季后赛 / 深渊总决赛由你<b>亲手投出</b>临场状态，六档发挥即时反馈。</li>
-      <li><b>转会 / 年度评选 / 商业休整</b>，以及从「饮水机管理员」到「时代丰碑」的 v6.3 结局成就。</li>
-    </ul>
-    <p class="muted">数值与已回归的蒙特卡洛引擎 v2.3 同源。</p>`, "创建角色");
+  const codex = loadCodex();
+  const allE = Object.keys(E.ENDING_TEXT).length, allA = Object.keys(E.ACH_DESC).length;
+  const hasLast = codex.last && codex.last.v === 3;
+  const progress = codex.runs
+    ? `<p class="muted">📂 本地存档：已征战 <b>${codex.runs}</b> 段生涯，解锁结局 <b>${codex.endings.length}/${allE}</b>、成就 <b>${codex.achs.length}/${allA}</b>。</p>`
+    : "";
+  const choice = await present({
+    title: "IVL 模拟器 · 可玩切片 demo-v3.0",
+    body: `
+      <p>欢迎来到《IVL 模拟器》可玩垂直切片。你将扮演一名《第五人格》职业电竞选手，从青训出道，征战 7 个赛年。</p>
+      <ul class="intro">
+        <li><b>训练养成 + 突发事件</b>：23 件训练事件，选项不预告数值；<b>容貌</b>越高越容易触发商业/漫展类邀约。</li>
+        <li><b>赛事模拟</b>：夏/秋季赛季后赛、IVS、深渊全球赛（含季军赛）；<b>赛事名场面</b>彩蛋随发挥触发。</li>
+        <li><b>伤病系统</b>：临时伤病 / 腱鞘炎 / 伤重退役，靠护腕·体检·理疗·商业休整对抗。</li>
+        <li><b>年度商店</b>：每年随机上架，<b>8% 概率</b>现身后悔药 / 庄园密信（<b>减免所有冠军疲劳</b>）/ 骨龄逆转血清。</li>
+        <li><b>该你上场了！</b>：季后赛 / 深渊总决赛由你<b>亲手投出</b>临场状态，六档发挥即时反馈。</li>
+        <li><b>生涯战报卡</b>（可截图分享）+ <b>全部结局与成就一览</b> + <b>本地存档</b>（v3.0 新增）。</li>
+      </ul>
+      ${progress}
+      <p class="muted">数值与已回归的蒙特卡洛引擎 v2.5 同源（《数值设计 v6.0》/《策划案 v7.0》/《文案设计 v2.0》）。</p>`,
+    choices: hasLast
+      ? [{ label: "创建角色", cls: "primary" }, { label: "📜 查看上局生涯战报", cls: "ghost" }]
+      : [{ label: "创建角色", cls: "primary" }],
+  });
+  if (choice === 1 && hasLast) {
+    while (true) {
+      const c2 = await present({
+        title: "上局生涯战报",
+        sub: `${codex.last.date} · ${codex.last.name}`,
+        body: warCardHtml(codex.last, codex.last.kind === "forced"),
+        choices: [{ label: "🏆 全部结局与成就", cls: "ghost" }, { label: "← 返回，开始新生涯", cls: "primary" }],
+      });
+      if (c2 === 0) { await codexPanel(codex.last, codex); continue; }
+      break;
+    }
+  }
   await characterCreation();
   await career();
 }

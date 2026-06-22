@@ -1,5 +1,5 @@
-/* 冲烟测试 / 头脑风暴式回归 (v2.3)：用 JS 引擎(engine.js)自动重跑若干档位，
- * 验证第二版切片的引擎移植没有崩溃、且夺冠率与《回归报告v2.3》同量级。
+/* 冲烟测试 / 头脑风暴式回归 (v3.0)：用 JS 引擎(engine.js)自动重跑若干档位，
+ * 验证切片引擎移植没有崩溃、且夺冠率与蒙特卡洛 v2.5（数值 v6.0）同量级。
  * 自动策略：突发事件统一选 0 号选项(私联粉丝选婉拒)；赛中事件选 0 号选项。
  * 仅供开发期使用，可删。运行： node _smoketest.js 8000
  */
@@ -19,11 +19,17 @@ function autoTrainPeriod(p, n, year, age, attrs, intensity, attendPop) {
     if (proj === "休息") continue;
     trained = true;
     if (Math.random() < E.CONFIG.TRAIN_EVENT_P) {
-      const k = E.choiceOf(E.TRAIN_EVENT_KEYS);
+      const k = E.pickTrainingEvent(p);     // v6.0：容貌/休整加权抽取
       const ev = E.TRAIN_EVENTS[k];
-      // 流量/商务类事件：attendPop 选 0(吸粉)，否则选 1(专注训练)；其余选 0(主动成长支线)
-      const POP_EV = { "漫展邀约": 1, "节目录制": 1, "商务邀约": 1, "短视频爆火": 1 };
-      const idx = (k in POP_EV) ? (attendPop ? 0 : 1) : 0;
+      // 商业/流量类事件：attendPop 选吸粉档，否则选专注成长档；其余默认 0。
+      // 值 = [popIdx, growthIdx]；options 不足时由 clamp 兜底。
+      const POP_EV = {
+        "漫展邀约": [0, 1], "节目录制": [0, 1], "商务邀约": [0, 1], "短视频爆火": [0, 1],
+        "可惜为时已晚": [1, 0], "线下偶遇": [0, 1], "马甲掉了": [0, 1], "嘉宾解说": [0, 2],
+      };
+      let idx = 0;
+      if (k in POP_EV) { idx = attendPop ? POP_EV[k][0] : POP_EV[k][1]; }
+      idx = Math.min(idx, ev.options.length - 1);
       ev.options[idx].apply(p); p._clamp();
       if (p._fired) throw { forced: "你被开除了！" };
     }
@@ -167,7 +173,7 @@ function career(cfg) {
       autoTrainPeriod(p, p.rest_active ? 3 : 5, year, age, cfg.attrs, cfg.intensity, cfg.attendPop);
       if (sel(p, year)) { const c = p.champ["秋"]; ar = domestic(p, "秋", year, age); if (p.champ["秋"] > c) yc.add("秋"); }
       autoTrainPeriod(p, p.rest_active ? 3 : 5, year, age, cfg.attrs, cfg.intensity, cfg.attendPop);
-      if (sel(p, year)) { const seeded = (sr + ar) / 2 <= 2; p._abyss_fatigue = E.CONFIG.ABYSS_SYNC_FATIGUE * yc.size; const c = p.champ["深渊"]; abyss(p, year, age, seeded); p._abyss_fatigue = 0; if (p.champ["深渊"] > c) yc.add("深渊"); }
+      if (sel(p, year)) { const seeded = (sr + ar) / 2 <= 2; p._abyss_fatigue = Math.min(E.CONFIG.ABYSS_SYNC_FATIGUE_CAP, E.CONFIG.ABYSS_SYNC_FATIGUE_PER * yc.size); const c = p.champ["深渊"]; abyss(p, year, age, seeded); p._abyss_fatigue = 0; if (p.champ["深渊"] > c) yc.add("深渊"); }
       if (["夏", "秋", "IVS", "深渊"].every(k => yc.has(k))) grand = true;
       E.transferAmbient(p); E.annualAwards(p, year);
       if (p.rest_active) { p.addPop(E.rnd(...E.CONFIG.REST_POP_RANGE)); p.rest_year_count += 1; }
@@ -189,7 +195,7 @@ const POLICIES = {
 };
 
 const N = parseInt(process.argv[2] || "8000", 10);
-console.log(`冲烟测试 v2.3 · 每档 N=${N}`);
+console.log(`冲烟测试 v3.0 · 每档 N=${N}`);
 for (const [name, cfg] of Object.entries(POLICIES)) {
   let anyChamp = 0, ab = 0, grand = 0, retired = 0, benched = 0, fired = 0; const finals = {}; const attr = [0, 0, 0, 0]; let pf = 0;
   for (let i = 0; i < N; i++) {
@@ -209,4 +215,4 @@ for (const [name, cfg] of Object.entries(POLICIES)) {
   console.log(`  任意冠=${pc(anyChamp)}  全球冠=${pc(ab)}  金满贯=${pc(grand)}  伤重退役=${pc(retired)}  饮水机=${pc(benched)}  被开除=${pc(fired)}`);
   console.log(`  结局Top:`, Object.fromEntries(Object.entries(finals).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => [k, pc(v)])));
 }
-console.log("\n对照《回归报告v2.3》：普通任意冠~中、极限全球冠较高、颜值流量伤重退役应被压低(≤~35%)、中层满役结局承接普通周目。");
+console.log("\n对照蒙特卡洛 v2.5（数值 v6.0）：冠军疲劳减负 + 深渊下调后金满贯/全球冠应上升；颜值流量伤重退役仍应被压低(≤~35%)、中层满役结局承接普通周目。");

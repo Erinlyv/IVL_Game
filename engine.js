@@ -1,14 +1,21 @@
 /* =============================================================================
- * IVL 模拟器 · 引擎 (engine.js) · 垂直可玩切片 demo-v2.3
- * 严格移植自《测试脚本/montecarlo_ivl.py》（对齐《数值设计 v5.4》/
- * 《策划案 v6.5》/《文案设计 v1.3》）。把脚本里的"策略自动决策"替换为玩家点击，
+ * IVL 模拟器 · 引擎 (engine.js) · 垂直可玩切片 demo-v3.0
+ * 严格移植自《测试脚本/montecarlo_ivl.py》（对齐《数值设计 v6.0》/
+ * 《策划案 v7.0》/《文案设计 v2.0》）。把脚本里的"策略自动决策"替换为玩家点击，
  * 数值 / 公式逐项保持一致，使 demo 手感与已回归的平衡同源。
  *
- * v2.3 新增（相对 demo v2.2 / 对齐 v6.5·v5.4·v1.3《demov2.2feedback》）：
- *   · 进入比赛期体力 = 现有体力 +60（封顶上限），不再回固定 70（训练周期开始仍回满）；
- *   · 商店：护腕 500→300、战术分析仪 700→400；好运签新增「临场不会失常」（浮动下限抬到 −V/3）；
- *   · 深渊小组赛 [58,74]→[50,72]、深渊总决赛 [70,82]→[65,82]（下限下调）；
- *   · 运气结局揭晓（生涯回顾新增运气栏）、常规赛前新增开赛说明界面（UI 层，见 game.js）。
+ * v3.0 新增（相对 demo v2.3 / 对齐 v7.0·v6.0·v2.0《demov2.3feedback》）：
+ *   · 冠军同年同步疲劳重做：每多 1 冠 −2/场、整场封顶 −6（原 −5/冠且无封顶）；
+ *   · 庄园密信增强：由"抵消 1 冠疲劳"改为"减免所有冠军疲劳"（进深渊前同步疲劳清零）；
+ *   · 对手基准区间重校：常规·新秀年 Tri(31,46,58)→Tri(33,48,60)、常规·第2年起上限 72→74、
+ *     IVS [70,84]→[60,84]、深渊总决（含季军赛） [65,82]→[65,85]；
+ *   · 容貌驱动商业类训练事件触发概率（商业事件权重 ×bizMult=0.5+容貌/100；商业休整年再 ×2.5）；
+ *   · 训练事件扩容 19→23（可惜为时已晚 / 线下偶遇 / 马甲掉了 / 嘉宾解说）；
+ *   · 赛事名场面事件 5 件（定位+上一场失常/胜利且正常以上，小概率，各全生涯至多 1 次，
+ *     +2 人气 / +2 稳定；纯叙事彩蛋）；
+ *   · 修复：移除导出表中未定义的 npcSelf 引用（原会致 engine.js 加载即抛 ReferenceError）。
+ *   · UI 层（见 game.js）：季后赛进入按钮文案简化为「进入季后赛」、生涯战报卡可截图分享、
+ *     全部结局与成就一览、localStorage 存档/续局。
  *
  * v2.2 新增（相对 demo v2.1 / 对齐 v6.4·v5.3·v1.2）：
  *   ① 商店刷新规则：常规 9 件（属性成长 5 + 临场爆发 3 + 舆论处理 1）每次随机抽 5 上架、
@@ -72,7 +79,9 @@ const CONFIG = {
   // 体力（v5.4：进入比赛期体力 = 现有体力 + MATCH_RECOVER，封顶上限，不再回固定 70）
   GAME_STAMINA_COST: { "常规": 6 }, DEFAULT_GAME_STAMINA_COST: 10, MATCH_START: 70, MATCH_RECOVER: 60,
 
-  ABYSS_SYNC_FATIGUE: 5,
+  // 金满贯同年同步疲劳（v6.0 重做）：每多 1 冠 −PER/场，整场封顶 −CAP。
+  ABYSS_SYNC_FATIGUE_PER: 2,
+  ABYSS_SYNC_FATIGUE_CAP: 6,
 
   W_TECH: 0.40, W_TAC: 0.35, W_PHYS: 0.15, W_STAB: 0.10,
 
@@ -114,14 +123,14 @@ function popThr3(year) { return 120 + (year - 1) * 15; }
 function sampleOpp(stage, year, extra = 0) {
   const d = oppDelta(year) + extra;
   if (stage === "常规") {
-    if (year === 1) return triangular(31, 58, 46);
-    return triangular(45, 72, 60) + d;
+    if (year === 1) return triangular(33, 60, 48);  // v6.0：新秀年上抬 31/46/58 → 33/48/60
+    return triangular(45, 74, 60) + d;              // v6.0：上限 72 → 74
   }
   if (stage === "季后") return rnd(65, 83) + d;
-  if (stage === "IVS") return rnd(70, 84) + d;
+  if (stage === "IVS") return rnd(60, 84) + d;     // v6.0：下限 70 → 60
   if (stage === "预选") return rnd(44, 64) + d;
-  if (stage === "小组") return rnd(50, 72) + d;   // v5.4：下限下调（demov2.2feedback），[58,74]→[50,72]
-  if (stage === "总决") return rnd(65, 82) + d;   // v5.4：下限下调，[70,82]→[65,82]
+  if (stage === "小组") return rnd(50, 72) + d;   // v5.4：下限下调，[58,74]→[50,72]
+  if (stage === "总决") return rnd(65, 85) + d;   // v6.0：上限 82 → 85（含季军赛）
   throw new Error("unknown stage " + stage);
 }
 
@@ -164,7 +173,7 @@ const SHOP_ITEMS = [
 /* ---------------------- 极其稀缺商品（v6.4 / v5.3 §9 新增） -------------- *
  * 刷新时 8% 概率命中，命中后从 3 件中随机抽 1 上架，定价昂贵、限量 1。
  *  · 后悔药   redo : 本赛年获得 1 次"重开"额度（一场比赛打输后可立刻重打一次）。
- *  · 庄园密信 seal : 免除一次"金满贯同年同步疲劳"（进深渊前抵消 1 冠的疲劳扣减）。
+ *  · 庄园密信 seal : 减免所有冠军疲劳（进深渊前清零当年累积的全部金满贯同步疲劳）。
  *  · 骨龄逆转血清 serum : 本赛年技术 / 战术 / 体能的年龄成长衰减归零（growthMult 视为 1.00）。
  * 标签文案严格取自《文案设计 v1.2》§11.6。
  * --------------------------------------------------------------------- */
@@ -174,8 +183,8 @@ const SHOP_RARE = [
     desc: "本赛年获得 1 次「重开」额度：一场比赛打输后可立刻重打一次",
     tag: "再给自己一次机会 · 输了别急着摔键盘——这一颗，能让你把那场重新打一遍。" },
   { name: "庄园密信", price: 6000, qty: 1, kind: "seal", group: "极其稀缺", rare: true,
-    desc: "免除一次「金满贯同年同步疲劳」：进深渊前抵消 1 冠的疲劳扣减",
-    tag: "金满贯路上的特赦令 · 横扫三冠的疲惫，由这封密信替你扛下；深渊里，你还是满状态的那个你。" },
+    desc: "减免所有冠军疲劳：进深渊前清零当年累积的全部金满贯同步疲劳",
+    tag: "金满贯路上的特赦令 · 横扫三冠的疲惫，由这封密信替你全数扛下；深渊里，你还是满状态的那个你。" },
   { name: "骨龄逆转血清", price: 10000, qty: 1, kind: "serum", group: "极其稀缺", rare: true,
     desc: "本赛年技术 / 战术 / 体能的年龄成长衰减归零（成长 ×1.00）",
     tag: "把时间还给你的手 · 年龄追不上你的野心？这一年，技术、战术、体能都当回十八岁来练。" },
@@ -282,6 +291,8 @@ class Player {
     this.ev_count = 0;
     this.won_with_teno = false;
     this.injured_win = 0;
+    this.spotlight = new Set();      // v6.0：已触发的赛事名场面（各全生涯至多 1 次）
+    this.spotlight_count = 0;        // v6.0：名场面触发总数
 
     // 年度 / 年内
     this.cur_year = 0;
@@ -998,14 +1009,89 @@ const TRAIN_EVENTS = {
   "直播口嗨翻车": { flavor: "直播时你一句口嗨被掐头去尾截成图，配上耸动标题传遍全网，评论区已经吵翻了天。你选择——", options: [
     { label: "诚恳道歉灭火", apply(p){ p.addPop(-3); p.grow("stab",3); return "你第一时间发了条澄清加道歉，姿态放得很低，但依旧有人不买账。（人气 −3、稳定 +3）"; } },
     { label: "嘴硬对线", apply(p){ p.stamina+=5; if(Math.random()<0.30){ p.addPop(-5); p.stab=Math.max(0,p.stab-4); p.negative_news=true; p.ever_negative=true; return "你偏不认怂，直接开麦回怼。结果被大主播一转发，「挂人」的事闹大了。（人气 −5、稳定 −4、叠加负面新闻）"; } return "你偏不认怂，直接开麦回怼。痛快是痛快，好在风波居然自己平息了。（体力 +5）"; } } ] },
+  /* ----------- v3.0 新增 4 件（对齐《文案设计 v2.0》§10.A / demov2.3feedback，商业类计入 bizMult 权重） ----------- */
+  "可惜为时已晚": { flavor: "最近你的一篇同人小说在圈内爆火，其中离奇的结局引发无数观众调侃与传播。你选择——", options: [
+    { label: "开直播切割", apply(p){ p.addPop(-1); p.grow("stab",2); return "你郑重澄清那只是玩票之作，请大家别过度解读。热度降了点，心态倒是更稳了。（人气 −1、稳定 +2）"; } },
+    { label: "无所谓，与大家一起玩梗", apply(p){ p.addPop(1); p.grow("stab",1); return "你干脆下场和大家一起接梗，气氛其乐融融，「梗主亲临」又涨了一波热度。（人气 +1、稳定 +1）"; } } ] },
+  "线下偶遇": { flavor: "一次训练结束后，你与队友在海底捞一起吃夜宵，被粉丝认了出来，你选择——", options: [
+    { label: "热情合影宠粉", apply(p){ p.addPop(2); p.stamina-=10; return "你笑着跟每个人合了影、签了名，「人超好」的安利当晚就发酵了。（人气 +2、体力 −10）"; } },
+    { label: "低调戴上口罩开溜", apply(p){ p.grow("stab",1); p.addPop(-2); return "你戴上口罩、压低帽檐匆匆离开，有人理解，也有人嘀咕「架子大」。（稳定 +1、人气 −2）"; } } ] },
+  "马甲掉了": { flavor: "你社交平台上的小号被人扒了出来，里面的内容被网友解读出了各种含义。你选择——", options: [
+    { label: "积极回应，绝不让人误会自己", apply(p){ p.addPop(2); p.stab=Math.max(0,p.stab-3); return "你逐条认真回应，心态受到了一定影响，但也有部分网友被你的真诚打动。（人气 +2、稳定 −3）"; } },
+    { label: "冷处理，实力才是王道", apply(p){ p.grow("tech",2); p.addPop(-2); return "你埋头训练，技术得到提升。但你的不回应也让粉丝感到心寒。（技术 +2、人气 −2）"; } } ] },
+  "嘉宾解说": { flavor: "官方邀请你去给一场比赛做嘉宾解说。你选择——", options: [
+    { label: "认真整活金句频出", apply(p){ p.addPop(3); p.stamina-=18; let ex=""; if(Math.random()<0.15){ p.addPop(3); ex="——其中一句还被剪成切片喜提新梗出圈！（额外人气 +3）"; } return "你在解说席上金句不断，弹幕笑成一片。（人气 +3、体力 −18）"+ex; } },
+    { label: "全程专业讲解", apply(p){ p.grow("tac",1); p.addPop(1); p.stamina-=15; return "你认真拆解了每一波团战的思路，被夸「这才是选手视角」。（战术 +1、人气 +1、体力 −15）"; } },
+    { label: "推说要训练婉拒", apply(p){ p.grow("tech",1); p.grow("tac",1); return "你婉拒了邀约，回训练室继续磨自己的功课。（技术 +1、战术 +1）"; } } ] },
 };
 const TRAIN_EVENT_KEYS = Object.keys(TRAIN_EVENTS);
+/* 商业类训练事件（v6.0）：抽取权重 ×bizMult（=0.5+容貌/100；商业休整年再 ×2.5），其余事件权重 1.0。 */
+const BIZ_EVENT_KEYS = new Set(["漫展邀约", "节目录制", "商务邀约", "短视频爆火", "可惜为时已晚", "线下偶遇", "嘉宾解说"]);
+function bizMult(p) { return (0.5 + p.appearance / 100) * (p.rest_active ? 2.5 : 1.0); }
+// v6.0：按权重抽取训练期事件（容貌越高、休整年越易抽到商业类事件）。
+function pickTrainingEvent(p) {
+  const m = bizMult(p);
+  const weights = TRAIN_EVENT_KEYS.map(k => (BIZ_EVENT_KEYS.has(k) ? m : 1.0));
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < TRAIN_EVENT_KEYS.length; i++) {
+    r -= weights[i];
+    if (r < 0) return TRAIN_EVENT_KEYS[i];
+  }
+  return TRAIN_EVENT_KEYS[TRAIN_EVENT_KEYS.length - 1];
+}
+
+/* --------------------- 赛事名场面事件（v6.0 新增 · 5 件 · 纯叙事彩蛋） ----------------- *
+ * 触发条件：定位 + 上一场发挥（失常 / 胜利且正常以上）；满足时按 SPOTLIGHT_P 掷骰，
+ * 各事件全生涯至多触发 1 次；效果统一 +2 人气 / +2 稳定。文案对齐《文案设计 v2.0》§10.C。
+ * --------------------------------------------------------------------- */
+const SPOTLIGHT_P = 0.08;
+const SPOTLIGHT_EVENTS = {
+  "世界名画": { role: "求生者", when: "abnormal",
+    title: "名场面 · 世界名画",
+    text: "你的空军这把发挥严重失常，先是空枪，又被震慑，赛后全体队友目光向你看齐——这一幕被观众截图，成为赛事名场面之一。" },
+  "为什么要悲观啊": { role: "监管者", when: "abnormal",
+    title: "名场面 · 为什么要悲观啊！",
+    text: "你本有机会留人，但闪现被对手规避，情急之下又交出辅助特质「悲观」，反而给对手送出关键受击加速，最终目送对方四跑。由于发挥过于离奇，连解说都忍不住在台上叫出声。" },
+  "闪现进洞": { role: "监管者", when: "abnormal",
+    title: "名场面 · 闪现进洞",
+    text: "在圣心医院二楼，你一记闪现，没能击倒对手，却精准掉入洞中，失去了一波大节奏。操作过于离奇，成为了赛事名场面之一。" },
+  "永眠镇零天赋": { role: "监管者", when: "abnormal",
+    title: "名场面 · 永眠镇，零天赋，我叫xx你记住",
+    text: "对面选出了一个少见的角色，你忙于和教练商讨对策而忘记了选择天赋，最终只能零天赋上场硬抓，尽显心酸。但好在这是你的绝活角色，即使如此，你也没有让对面四跑。" },
+  "纯度遛鬼": { role: "求生者", when: "winNormal",
+    title: "名场面 · 纯度遛鬼",
+    text: "你的囚徒发挥相当出色，毫无破绽的牵制成功四跑，让队伍赢得了胜利。赛后采访，主持人问你有什么牵制秘诀，你开玩笑说：把屏幕上亮着的都点了。" },
+};
+/* 掷一次名场面：win=是否胜利，abnormal=上一场是否发挥失常（随机浮动落 1-2 档）。
+ * 命中返回 {name, title, text} 并已结算 +2 人气 / +2 稳定；否则返回 null。 */
+function rollSpotlight(p, win, abnormal) {
+  const survivor = (p.role === "求生者");
+  let pool;
+  if (abnormal) {
+    pool = Object.keys(SPOTLIGHT_EVENTS).filter(n => {
+      const e = SPOTLIGHT_EVENTS[n];
+      return e.when === "abnormal" && e.role === p.role && !p.spotlight.has(n);
+    });
+  } else if (win && survivor) {
+    pool = Object.keys(SPOTLIGHT_EVENTS).filter(n =>
+      SPOTLIGHT_EVENTS[n].when === "winNormal" && !p.spotlight.has(n));
+  } else {
+    pool = [];
+  }
+  if (!pool.length || Math.random() >= SPOTLIGHT_P) return null;
+  const name = choiceOf(pool);
+  p.spotlight.add(name); p.spotlight_count += 1;
+  p.addPop(2); p.grow("stab", 2);
+  const e = SPOTLIGHT_EVENTS[name];
+  return { name, title: e.title, text: e.text };
+}
 
 /* --------------------------- 暴露到全局 -------------------------------- */
 window.IVL = {
   CONFIG, SHOP_ITEMS, SHOP_RARE, SHOP_RARE_P, buildShopStock, Player, rnd, randint, triangular, gauss, clamp, choiceOf,
   OPP_POP: CONFIG.OPP_POP, WIN_POP: CONFIG.WIN_POP, CHAMP_REWARD: CONFIG.CHAMP_REWARD,
-  selectThreshold, npcSelf, growthTech, growthTac, growthPhys, oppDelta, sampleOpp, popThr3,
+  selectThreshold, growthTech, growthTac, growthPhys, oppDelta, sampleOpp, popThr3,
   applyTraining, tenoProb, rollInjury, healInjury, endCompetition,
   matchStartStamina, gameCost, luckCheck, rollMatchEvent, computeF, settleGame,
   fluctV, isManualDiceStage, diceTier, DICE_FEEDBACK, noBadFloor, rollFluct,
@@ -1013,6 +1099,7 @@ window.IVL = {
   specialTriggers, commercialRestEligible, transferRollForced, doTransfer, transferAmbient,
   annualAwards, reasonTags, pickReason, fmvpSpeech, FMVP_POEMS,
   computeAchievements, finalEnding, ENDING_TEXT, ACH_DESC, REASON_TEXT,
-  TRAIN_EVENTS, TRAIN_EVENT_KEYS,
+  TRAIN_EVENTS, TRAIN_EVENT_KEYS, BIZ_EVENT_KEYS, bizMult, pickTrainingEvent,
+  SPOTLIGHT_EVENTS, SPOTLIGHT_P, rollSpotlight,
 };
 
