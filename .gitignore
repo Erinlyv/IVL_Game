@@ -1,0 +1,26 @@
+# ===== 系统 / 编辑器 =====
+.DS_Store
+**/.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# ===== 依赖 / 构建产物（如后续引入工具链） =====
+node_modules/
+dist/
+build/
+.cache/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ===== 环境 / 本地配置 =====
+.env
+.env.local
+*.local
+
+# ===== 本地静态服务器临时文件 =====
+.parcel-cache/

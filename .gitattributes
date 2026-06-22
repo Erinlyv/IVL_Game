@@ -1,0 +1,30 @@
+# 统一文本文件换行为 LF，避免跨平台 CRLF 噪声
+* text=auto eol=lf
+
+# 显式声明文本类型
+*.html  text eol=lf
+*.css   text eol=lf
+*.js    text eol=lf
+*.json  text eol=lf
+*.md    text eol=lf
+*.svg   text eol=lf
+
+# 二进制资源：不做换行/diff 处理
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.mp3   binary
+*.wav   binary
+*.ogg   binary
+*.mp4   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+
+# 语言统计：自测脚本不计入主代码占比
+_smoketest.js linguist-vendored
+_uitest.js    linguist-vendored
