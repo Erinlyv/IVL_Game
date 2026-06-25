@@ -38,6 +38,38 @@ let endings = [];
 let inEnding = false;
 
 function clickOne() {
+  // === v4.1 结局/成就图鉴弹窗（独立 overlay，结局界面会 await 其关闭）：直接关闭以继续流程 ===
+  const cxm = q("#codexModal");
+  if (cxm && cxm.classList.contains("show")) { q("#cxX").click(); return true; }
+  // === v4.1 季后赛 / 深渊「晋级图」整屏 overlay（game.js runKnockoutScreen） ===
+  // overlay 自带按钮流程（与 present()/choose 解耦），需单独驱动：颁奖→完成 / 战报→颁奖 /
+  // NPC 场跳过 / 玩家场点上场掷骰、点下一场。配合 window.__KO_FAST 关闭动画时序。
+  const ko = q("#koscreen");
+  if (ko) {
+    const cer = q("#ko-ceremony");
+    if (cer && cer.classList.contains("show")) { q("#ko-cerDone").click(); return true; }
+    const rep = q("#ko-report");
+    if (rep && rep.classList.contains("show")) { q("#ko-ceremonyBtn").click(); return true; }
+    const skip = q("#ko-skipBtn");
+    if (skip && skip.style.display !== "none") { skip.click(); return true; }
+    const act = q("#ko-actBtn");
+    if (act && act.style.display !== "none" && !act.disabled) { act.click(); return true; }
+    return true; // overlay 动画/结算中，等待下一 tick
+  }
+  // === v4.2 常规赛「转播台」整屏 overlay（game.js runRegularSeasonScreen） ===
+  // overlay 自带按钮：突发事件弹窗选项 / 一键跳过 / 继续。优先处理事件弹窗，再用跳过快速跑通。
+  const rs = q("#rs-root");
+  if (rs) {
+    const evt = q("#rs-evtModal");
+    if (evt && evt.classList.contains("show")) { const o = q("#rs-evtOpts .opt"); if (o) { o.click(); return true; } }
+    const cont = q("#rs-continueBtn");
+    if (cont && cont.style.display !== "none") { cont.click(); return true; }
+    const skip = q("#rs-skipBtn");
+    if (skip && skip.style.display !== "none" && !skip.disabled) { skip.click(); return true; }
+    const act = q("#rs-actBtn");
+    if (act && !act.disabled) { act.click(); return true; }
+    return true; // 结算中，等待下一 tick
+  }
   // === demo6 角色创建覆盖层（chargen.js） ===
   const cc = q("#cc");
   if (cc && cc.classList.contains("show")) {
@@ -68,20 +100,23 @@ function clickOne() {
   // 2) 训练项目
   const projs = qa(".trainproj").filter(b => !b.disabled && !b.classList.contains("disabled"));
   if (projs.length) { projs[Math.floor(Math.random() * projs.length)].click(); return true; }
-  // 3) 商店：偶尔买一两件，然后结束
-  const buys = qa(".si-buy").filter(b => !b.disabled);
+  // 3) 商店（v4.0 购物车）：偶尔加入购物车一两件，然后结算（#shopCheckout）。
+  const buys = qa(".si-buy[data-inc]").filter(b => !b.disabled);
   if (buys.length && Math.random() < 0.3) { buys[Math.floor(Math.random() * buys.length)].click(); return true; }
-  const shopDone = q("#shopDone");
-  if (shopDone) { shopDone.click(); return true; }
+  const shopCheckout = q("#shopCheckout");
+  if (shopCheckout && !shopCheckout.disabled) { shopCheckout.click(); return true; }
   // 3.5) 手动掷骰（季后赛 / 深渊总决赛）：投掷 → 看反馈 → 带状态打
   const rollBtn = q("#rollBtn");
   if (rollBtn && !rollBtn.disabled) { rollBtn.click(); return true; }
   const diceGo = q("#diceGo");
   if (diceGo) { diceGo.click(); return true; }
+  // 3.6) 转会窗口改队名（v4.0 textPrompt：#teamOk 确认即可，留空走 fallback）
+  const teamOk = q("#teamOk");
+  if (teamOk && !teamOk.disabled) { teamOk.click(); return true; }
   // 4) 通用选项
   const choices = qa("#choices .choice").filter(b => !b.disabled);
   if (choices.length) {
-    const en = q(".wc-ending-name");
+    const en = q(".sc-ename");
     if (en) { if (!inEnding) { inEnding = true; endings.push(en.textContent); } }
     else { inEnding = false; }
     choices[Math.floor(Math.random() * choices.length)].click();
@@ -91,6 +126,7 @@ function clickOne() {
 }
 
 async function run() {
+  dom.window.__KO_FAST = true;   // 关闭晋级图动画时序，冲烟快速跑通
   dom.window.dispatchEvent(new dom.window.Event("DOMContentLoaded"));
   let idle = 0, ticks = 0;
   while (endings.length < TARGET && ticks < 200000) {

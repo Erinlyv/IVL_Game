@@ -26,16 +26,25 @@
     ],
   };
 
-  // 天赋面板属性行（demo6 七行布局；数值取自引擎 Player）
-  const ATTR_ROWS = [
-    { k: "appearance", name: "容貌", note: "全程固定", suffix: "" },
-    { k: "phys", name: "体能", note: "体力上限", suffix: "" },
+  // 天赋面板：四维核心（数值总量内随机分配）+ 容貌 / 人气 单独一行（v4.0《demov3.0feedback》）。
+  // 删除天赋选择界面的「资金」展示。
+  const CORE_ROWS = [
     { k: "tech", name: "技术", note: "得分核心", suffix: "" },
     { k: "tac", name: "战术", note: "运营核心", suffix: "" },
+    { k: "phys", name: "体能", note: "体力上限", suffix: "" },
     { k: "stab", name: "稳定性", note: "关键场心态", suffix: "" },
-    { k: "pop", name: "人气", note: "粉丝/应援", suffix: " 万" },
-    { k: "money", name: "资金", note: "商店货币", suffix: " G" },
   ];
+  const EXTRA_ROWS = [
+    { k: "appearance", name: "容貌", note: "全程固定", suffix: "" },
+    { k: "pop", name: "人气", note: "粉丝/应援", suffix: " 万" },
+  ];
+
+  // 随机名称池（v4.0）：全部为虚构名，刻意规避现实电竞战队 / 选手名称。
+  const ROLL_TEAMS = ["NOVA", "APEX", "ONYX", "COMET", "VEGA", "HERO", "BOLT", "FROST", "EMBER", "QUARTZ",
+    "LUMEN", "CREST", "DRIFT", "PULSE", "VAPOR", "HALO", "ZENITH", "ASTER", "HELIX", "PYRA", "VESPER"];
+  const ROLL_IDS = ["Ace", "Kira", "Nyx", "Volt", "Echo", "Sora", "Lumi", "Riku", "Yuki",
+    "Zed", "Milo", "Coco", "Pino", "Nana", "Toby", "Kai", "Ren", "Aki", "Leo", "Mira", "Juno"];
+  const randPick = (a) => a[Math.floor(Math.random() * a.length)];
 
   const STEPS = [
     { title: "建立选手档案" },
@@ -73,7 +82,7 @@
       <div class="mc">
         <div class="seal">✓</div>
         <h3>签约完成</h3>
-        <div class="bn" id="ccbn">MRC_XiaoD</div>
+        <div class="bn" id="ccbn">Nova_Rookie</div>
         <div class="sum" id="ccsum"></div>
         <button class="btn btn-go" id="ccclose" style="width:100%">开启职业生涯 →</button>
       </div>
@@ -97,7 +106,7 @@
       function roll() {
         state.player = new E.Player(
           ID_ENGINE[state.identity],
-          state.team || "MRC",
+          state.team || "Nova",
           state.pid || "无名选手",
           ROLE_CN[state.role]
         );
@@ -116,12 +125,16 @@
 
         if (state.step === 0) {
           c.innerHTML = `<div class="fieldrow">
-            <div class="field"><label class="lab">队伍名称（≤8字）</label><input class="inp" id="ccteam" maxlength="8" placeholder="例：MRC" value="${state.team}"></div>
-            <div class="field"><label class="lab">选手 ID（≤12字）</label><input class="inp" id="ccpid" maxlength="12" placeholder="例：XiaoD" value="${state.pid}"></div></div>
+            <div class="field"><label class="lab">队伍名称（≤8字）</label>
+              <div class="inprow"><input class="inp" id="ccteam" maxlength="8" placeholder="例：Nova" value="${state.team}"><button class="btn btn-roll" type="button" id="ccteamroll" title="随机队名">🎲</button></div></div>
+            <div class="field"><label class="lab">选手 ID（≤12字）</label>
+              <div class="inprow"><input class="inp" id="ccpid" maxlength="12" placeholder="例：Ace" value="${state.pid}"><button class="btn btn-roll" type="button" id="ccpidroll" title="随机 ID">🎲</button></div></div></div>
             <div class="signrow"><div class="badge">ID</div><div><div class="k">登记在册的完整选手 ID</div><div class="v" id="ccfullid"></div></div></div>`;
           const upd = () => { $("ccfullid").innerHTML = (state.team || "<em>队伍</em>") + "_" + (state.pid || "<em>ID</em>"); foot(); };
           $("ccteam").oninput = (e) => { state.team = e.target.value.trim(); upd(); };
           $("ccpid").oninput = (e) => { state.pid = e.target.value.trim(); upd(); };
+          $("ccteamroll").onclick = () => { state.team = randPick(ROLL_TEAMS); $("ccteam").value = state.team; upd(); };
+          $("ccpidroll").onclick = () => { state.pid = randPick(ROLL_IDS); $("ccpid").value = state.pid; upd(); };
           upd();
         } else if (state.step === 1) {
           c.innerHTML = `<div class="opts two">
@@ -145,11 +158,12 @@
             box.appendChild(el);
           });
         } else {
-          c.innerHTML = `<div class="attrtop"><div style="font-family:'Sora';font-weight:600">初始天赋</div><button class="btn btn-ghost" id="ccreroll">⟳ 刷新天赋</button></div>
-            <div class="attrs" id="ccattrs"></div>`;
-          const wrap = $("ccattrs");
           const P = state.player;
-          ATTR_ROWS.forEach((d) => {
+          const tot = Math.round(P.tech + P.tac + P.phys + P.stab);
+          c.innerHTML = `<div class="attrtop"><div style="font-family:'Sora';font-weight:600">初始天赋 <span class="attrtotal">四维总量 ${tot}</span></div><button class="btn btn-ghost" id="ccreroll">⟳ 刷新天赋</button></div>
+            <div class="attrs" id="ccattrs"></div>
+            <div class="attrextra" id="ccattrx"></div>`;
+          const mkAttr = (wrap, d) => {
             const raw = P[d.k];
             const el = document.createElement("div");
             el.className = "attr";
@@ -157,7 +171,9 @@
             wrap.appendChild(el);
             const w = Math.max(0, Math.min(100, raw));
             requestAnimationFrame(() => { el.querySelector(".bf").style.width = w + "%"; });
-          });
+          };
+          CORE_ROWS.forEach((d) => mkAttr($("ccattrs"), d));
+          EXTRA_ROWS.forEach((d) => mkAttr($("ccattrx"), d));
           $("ccreroll").onclick = () => { roll(); render(); };
         }
         foot();

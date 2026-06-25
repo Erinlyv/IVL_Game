@@ -1,8 +1,19 @@
 /* =============================================================================
- * IVL 模拟器 · 引擎 (engine.js) · 垂直可玩切片 demo-v3.0
- * 严格移植自《测试脚本/montecarlo_ivl.py》（对齐《数值设计 v6.0》/
- * 《策划案 v7.0》/《文案设计 v2.0》）。把脚本里的"策略自动决策"替换为玩家点击，
+ * IVL 模拟器 · 引擎 (engine.js) · 垂直可玩切片 demo-v4.0
+ * 严格移植自《测试脚本/montecarlo_ivl.py》（对齐《数值设计 v6.1》/
+ * 《策划案 v7.1》/《文案设计 v2.1》）。把脚本里的"策略自动决策"替换为玩家点击，
  * 数值 / 公式逐项保持一致，使 demo 手感与已回归的平衡同源。
+ *
+ * v4.0 新增（《demov3.0feedback》，对齐 v7.1·v6.1·v2.1）：
+ *   · 角色创建四维「数值总量内随机分配」：青训/人皇·屠皇 130、主播 110；人皇/屠皇最高值赋技术再 +5；
+ *     初始人气 青训/人皇·屠皇 U[0.8,2]、主播 U[3,5]；
+ *   · 随机 NPC 队名生成（各赛区，固定 InStar），战报呈现「我方 VS 对手」；
+ *   · 直播排位「战术增长→资金增长」（与人气正相关，[100,500]）、休息 体力 +40；
+ *   · 进入比赛期体力回复 60→40；名次资金报酬重定（季后 / 深渊专属名次表）；
+ *   · 深渊赛程重做：小组每组 5 队循环取前 3、淘汰赛（含 12 进 8、季军赛）；
+ *   · 临场状态 3/4 档文案互换；好运签「不失常」保障加固；
+ *   · 新增成就 6 项（多为隐藏）+ 成就/结局分级（白金/黄金/白银/青铜·普通）；
+ *   · BP 冲突选绝活获胜概率加人气；新增训练事件「后院起火」、转会后「位置变更」事件。
  *
  * v3.0 新增（相对 demo v2.3 / 对齐 v7.0·v6.0·v2.0《demov2.3feedback》）：
  *   · 冠军同年同步疲劳重做：每多 1 冠 −2/场、整场封顶 −6（原 −5/冠且无封顶）；
@@ -50,6 +61,18 @@ function gauss(mean, sd) {
 }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 function choiceOf(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function shuffle(arr) { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
+/* v4.0：四维「数值总量内随机分配」（《demov3.0feedback》角色创建）。
+ * 给定总量 total，在四维（技术/战术/体能/稳定）随机划分，每维不低于 min，和恰为 total。 */
+function allocateFourStats(total, min = 15) {
+  const rem = total - min * 4;
+  const w = [Math.random(), Math.random(), Math.random(), Math.random()];
+  const s = w[0] + w[1] + w[2] + w[3] || 1;
+  return {
+    tech: min + rem * w[0] / s, tac: min + rem * w[1] / s,
+    phys: min + rem * w[2] / s, stab: min + rem * w[3] / s,
+  };
+}
 
 /* ------------------------------- CONFIG -------------------------------- */
 const CONFIG = {
@@ -60,10 +83,13 @@ const CONFIG = {
     "单练":   { tech: 2, tac: 0, phys: 1, stab: 0, pop: 0.0, cost: 22 },
     "团队训练": { tech: 1, tac: 2, phys: 0, stab: 0, pop: 0.0, cost: 22 },
     "体能训练": { tech: 0, tac: 0, phys: 2, stab: 1, pop: 0.0, cost: 18 },
-    "直播排位": { tech: 0, tac: 1, phys: 0, stab: 2, pop: 0.5, cost: 15 },
-    "休息":   { tech: 0, tac: 0, phys: 0, stab: 0, pop: 0.0, cost: -50 },
+    // v4.0：直播排位「战术增长」改为「资金增长」，幅度与人气正相关（见 applyTraining）。
+    "直播排位": { tech: 0, tac: 0, phys: 0, stab: 2, pop: 0.5, cost: 15, moneyByPop: true },
+    "休息":   { tech: 0, tac: 0, phys: 0, stab: 0, pop: 0.0, cost: -40 },  // v4.0：休息 体力 +40
   },
   INTENSITY: { "休养": [0.8, 0.8], "正常": [1.0, 1.0], "高强度": [1.2, 1.2] },
+  // 直播排位资金增长：与人气正相关，最少 100、最高 500（《demov3.0feedback·训练》）。
+  STREAM_MONEY_MIN: 100, STREAM_MONEY_MAX: 500, STREAM_MONEY_PER_POP: 2,
 
   TRAIN_EVENT_P: 0.32,
   SOFTCAP_DIV: 80.0,
@@ -77,7 +103,7 @@ const CONFIG = {
   REST_TRAIN_N: 3, REST_GROWTH_MULT: 0.8, REST_INJURY_MULT: 0.5, REST_POP_RANGE: [2, 5],
 
   // 体力（v5.4：进入比赛期体力 = 现有体力 + MATCH_RECOVER，封顶上限，不再回固定 70）
-  GAME_STAMINA_COST: { "常规": 6 }, DEFAULT_GAME_STAMINA_COST: 10, MATCH_START: 70, MATCH_RECOVER: 60,
+  GAME_STAMINA_COST: { "常规": 6 }, DEFAULT_GAME_STAMINA_COST: 10, MATCH_START: 70, MATCH_RECOVER: 40,
 
   // 金满贯同年同步疲劳（v6.0 重做）：每多 1 冠 −PER/场，整场封顶 −CAP。
   ABYSS_SYNC_FATIGUE_PER: 2,
@@ -91,6 +117,12 @@ const CONFIG = {
   CHAMP_REWARD: { "夏": [30, 3000], "秋": [30, 3000], "IVS": [25, 2000], "深渊": [120, 10000] },
   FMVP_REWARD: [20, 1500],
   RUNNERUP_POP: 8, THIRD_POP: 4,
+  // v4.0 名次资金报酬（《demov3.0feedback·比赛》）：
+  //   夏/秋季赛季后赛：冠 2160 / 亚 1160 / 季 900 / 4th 700 / 5th 500 / 6th 320。
+  PLAYOFF_MONEY: { 1: 2160, 2: 1160, 3: 900, 4: 700, 5: 500, 6: 320 },
+  //   深渊：冠 6000 / 亚 2000 / 季 1240 / 4th 1000 / 5-8 600 / 9-12 400 / 13-16 240。
+  ABYSS_MONEY: { 1: 6000, 2: 2000, 3: 1240, 4: 1000 },
+  ABYSS_MONEY_RANGES: [[5, 8, 600], [9, 12, 400], [13, 16, 240]],
 
   SELECT_VACANCY_P: 0.05,
   FMVP_F_MIN: 90,
@@ -131,7 +163,52 @@ function sampleOpp(stage, year, extra = 0) {
   if (stage === "预选") return rnd(44, 64) + d;
   if (stage === "小组") return rnd(50, 72) + d;   // v5.4：下限下调，[58,74]→[50,72]
   if (stage === "总决") return rnd(65, 85) + d;   // v6.0：上限 82 → 85（含季军赛）
+  if (stage === "12进8") return rnd(60, 82) + d;  // v4.0：深渊淘汰赛 12 进 8
   throw new Error("unknown stage " + stage);
+}
+
+/* ----------------------- 随机 NPC 队名（v4.0《demov3.0feedback》） --------------- *
+ * 全部英文：可为英文单词/短语缩写、较短英文单词或字母排列；规避歧义与不良含义。
+ * 固定大陆赛区 NPC：InStar。每局开局随机生成各赛区队名池（无放回，去重）。
+ *   · 大陆赛区(8) + InStar → 夏/秋季赛对手（共 9 支）
+ *   · 日本(8) / 欧美(2) / 东南亚(2) / 港澳台(1) / 韩国(1) / 中国大陆民间(8)
+ * 战报呈现「我方 VS 对手」（如 Nova VS InStar）。
+ * --------------------------------------------------------------------- */
+/* 全部为虚构队名：刻意规避一切现实电竞战队 / 选手名称，避免版权与利益冲突。 */
+const TEAM_POOLS = {
+  cn: ["Nova", "Vega", "Lumen", "Crest", "Apex", "Onyx", "Quartz", "Comet", "Ember", "Vapor",
+       "Halo", "Zenith", "Cobalt", "Aster", "Helix", "Pyra", "Vesper", "Drift", "Pulse", "Mirae"],
+  amateur: ["Spark", "Echo", "Frost", "Maple", "Tidal", "Lynx", "Raven", "Zephyr",
+            "Bolt", "Cinder", "Quill", "Rookie5", "NightOwl", "Dawn", "Stride", "Flux"],
+  jp: ["Sengoku", "Kaze", "Sakura", "Ronin", "Kitsune", "Hayate", "Tsuki", "Akari",
+       "Yamato", "Kirin", "Hikari", "Tora", "Washi", "Mizu", "Raijin", "Suzaku"],
+  na: ["Aurora", "Summit", "Vanguard", "Pioneer", "Drake", "Outlaw", "Phantom", "Ranger"],
+  sea: ["Monsoon", "Garuda", "Tigris", "Banyan", "Coral", "Volcano", "Sunda", "Komodo"],
+  hktw: ["Harbor", "Jade", "Phoenix", "Vertex", "Typhoon", "Orchid"],
+  kr: ["Hanbit", "Dawnstar", "Mugung", "Sobek", "Frostwind", "Arang"],
+};
+function pickTeams(pool, n, used) {
+  const avail = pool.filter((x) => !used.has(x));
+  shuffle(avail);
+  const out = avail.slice(0, n);
+  out.forEach((x) => used.add(x));
+  return out;
+}
+function generateTeams(playerTeam) {
+  const used = new Set(["InStar"]);
+  if (playerTeam) used.add(playerTeam);
+  const cn = pickTeams(TEAM_POOLS.cn, 8, used);
+  return {
+    fixed: "InStar",
+    cn,
+    domestic: ["InStar", ...cn],            // 夏/秋季赛对手池（9 支）
+    amateur: pickTeams(TEAM_POOLS.amateur, 8, used),
+    jp: pickTeams(TEAM_POOLS.jp, 8, used),
+    na: pickTeams(TEAM_POOLS.na, 2, used),
+    sea: pickTeams(TEAM_POOLS.sea, 2, used),
+    hktw: pickTeams(TEAM_POOLS.hktw, 1, used),
+    kr: pickTeams(TEAM_POOLS.kr, 1, used),
+  };
 }
 
 /* ------------------------------- 商店 ---------------------------------- *
@@ -211,31 +288,33 @@ function buildShopStock() {
 
 /* ------------------------------ Player --------------------------------- */
 class Player {
-  // 策划案 v6.3 §四：完整选手 ID = 队伍名称_玩家ID（如 MRC_XiaoD）。
+  // 策划案 v6.3 §四：完整选手 ID = 队伍名称_玩家ID（如 Nova_Rookie，均为示例虚构名）。
   constructor(identity, teamName, playerId, role) {
     this.identity = identity;
-    this.teamName = (teamName || "MRC").trim() || "MRC";
+    this.teamName = (teamName || "Nova").trim() || "Nova";
     this.playerId = (playerId || "无名选手").trim() || "无名选手";
     this.name = `${this.teamName}_${this.playerId}`;   // 面板/赛场显示用完整 ID
     this.role = role || "求生者";
 
     this.appearance = rnd(1, 100);
-    this.phys = rnd(35, 45);
-    this.tech = rnd(25, 35);
-    this.tac = rnd(25, 35);
-    this.stab = rnd(25, 35);
     this.luck = rnd(1, 100);          // feedback15: 完全隐藏数值
     this.money = 1000;
-    this.pop = 1;
     this.stamina = 0;
 
-    if (identity === "青训") {
-      for (const k of ["phys", "tech", "tac", "stab"]) this[k] += 3;
-    } else if (identity === "主播") {
-      this.stab += 3; this.money = 3000; this.pop = 20;
-    } else if (identity === "人皇") {
-      this.tech += 12; this.tac += 5;
+    // v4.0《demov3.0feedback·角色创建》：四维改为「数值总量内随机分配」。
+    //   · 青训 / 榜前人皇·屠皇 总量 130；人气主播 总量 110。
+    //   · 人皇 / 屠皇：把 roll 出的最高值赋给技术，并在此基础上 技术 +5（一次性呈现）。
+    //   · 初始人气：青训 / 人皇·屠皇 = U[0.8,2]；主播 = U[3,5]。
+    const total = (identity === "主播") ? 110 : 130;
+    let dims = allocateFourStats(total);
+    if (identity === "人皇") {
+      const vals = [dims.tech, dims.tac, dims.phys, dims.stab].sort((a, b) => b - a);
+      const rest = shuffle(vals.slice(1));
+      dims = { tech: vals[0] + 5, tac: rest[0], phys: rest[1], stab: rest[2] };
     }
+    this.tech = dims.tech; this.tac = dims.tac; this.phys = dims.phys; this.stab = dims.stab;
+    if (identity === "主播") { this.money = 3000; this.pop = rnd(3, 5); }
+    else { this.pop = rnd(0.8, 2); }
     this._clamp();
 
     // 选拔 / 主力
@@ -294,6 +373,15 @@ class Player {
     this.spotlight = new Set();      // v6.0：已触发的赛事名场面（各全生涯至多 1 次）
     this.spotlight_count = 0;        // v6.0：名场面触发总数
 
+    // v4.0 新成就追踪（《demov3.0feedback·成就》，多为隐藏成就）
+    this.used_serum = false;         // 返老还童：使用过骨龄逆转血清
+    this.used_seal = false;          // 庄园快信：使用过庄园密信
+    this.used_redo = false;          // 逆转未来：使用过后悔药
+    this.changed_position = false;   // 万能螺丝：为队伍转过位置
+    this.bp_conflict_count = 0;      // 触发 BP 冲突事件次数
+    this.bp_signature_count = 0;     // BP 冲突中选择绝活角色的次数
+    this.bp_signature_pending = false; // 本场 BP 选了绝活、待结算胜负加成
+
     // 年度 / 年内
     this.cur_year = 0;
     this.year_f = [];
@@ -318,6 +406,9 @@ class Player {
     for (const k of ["appearance", "phys", "tech", "tac", "stab", "luck"]) {
       this[k] = clamp(this[k], 0, 100);
     }
+    // demov4.1feedback：粉丝数（人气）/ 体力均不可为负，统一在 clamp 处兜底。
+    if (this.pop < 0) { this.pop = 0; }
+    if (this.stamina < 0) { this.stamina = 0; }
   }
   // 转会后可重新输入一次队伍名称（选手 ID 不变），完整 ID 随之更新（策划 §四.3 / §六.5）。
   renameTeam(newTeam) {
@@ -333,7 +424,7 @@ class Player {
   teamNpc(_year) { return clamp(this.npc_base + this.npc_growth + this.npc_offset, 40, CONFIG.TEAM_NPC_CAP); }
   // 每个新赛年（第 2 赛年起）调用一次：战术越高，队伍配合提升越多（单年封顶）。返回本年提升量。
   advanceTeammate() { const g = teammateYearGain(this.tac); this.npc_growth += g; return g; }
-  addPop(base) { this.pop += base * this.pop_mult; }
+  addPop(base) { this.pop = Math.max(0, this.pop + base * this.pop_mult); }   // 粉丝数下限 0（demov4.1feedback）
   grow(attr, amount) {
     if (amount <= 0) { this[attr] = Math.max(0, this[attr] + amount); return; }
     const cur = this[attr];
@@ -385,8 +476,19 @@ function applyTraining(p, proj, intensity, year) {
   if (t.phys) p.grow("phys", t.phys * eff * gp);
   if (t.stab) p.grow("stab", t.stab * eff);
   if (t.pop) p.addPop(t.pop * eff);
+  // v4.0：直播排位带来资金，幅度与人气正相关（clamp 到 [100,500]，不随强度缩放）。
+  if (t.moneyByPop) {
+    // demov4.1feedback·数字规范：直播排位资金收益取整后入账，避免资金出现小数。
+    p.money += Math.round(clamp(CONFIG.STREAM_MONEY_MIN + p.pop * CONFIG.STREAM_MONEY_PER_POP,
+                     CONFIG.STREAM_MONEY_MIN, CONFIG.STREAM_MONEY_MAX));
+  }
   p.stamina = Math.min(p.stamina_max, p.stamina - t.cost * sm);
   p._clamp();
+}
+/* 直播排位资金预估（展示用）：与 applyTraining 同口径。 */
+function streamMoneyGain(p) {
+  return Math.round(clamp(CONFIG.STREAM_MONEY_MIN + p.pop * CONFIG.STREAM_MONEY_PER_POP,
+               CONFIG.STREAM_MONEY_MIN, CONFIG.STREAM_MONEY_MAX));
 }
 
 /* ------------------------------- 比赛 ---------------------------------- */
@@ -423,10 +525,12 @@ function rollMatchEvent(p, opts = {}) {
           flavor: "BP 阶段，教练与你思路产生了分歧。",
           options: [
             { label: "选版本强势但熟练度不够的新角色", resolve(pl) {
+                pl.bp_conflict_count += 1; pl.bp_signature_pending = false;
                 if (pl.tech >= 70 && luckCheck(pl)) return { fdelta: 10, txt: "这一手奇兵直接把对面打懵，BP 优势瞬间变成场上优势！（本场 F +10）" };
                 return { fdelta: -8, txt: "新角色手感没找回来，反被对面针对得死死的。（本场 F −8）" };
               } },
-            { label: "选择绝活角色", resolve() { return { fdelta: -3, txt: "你还是选择了自己的老伙计，对面对此也早有准备。（本场 F −3）" }; } },
+            // v4.0：选绝活——若本场获胜，概率追加人气（结算后判定）。并计入「绝活信仰玩家」成就追踪。
+            { label: "选择绝活角色", resolve(pl) { pl.bp_conflict_count += 1; pl.bp_signature_count += 1; pl.bp_signature_pending = true; return { fdelta: -3, txt: "你还是选择了自己的老伙计，稳中求胜。若能赢下来，这份坚持会被粉丝看在眼里。（本场 F −3）" }; } },
           ] };
       }
       if (name === "设备") {
@@ -464,7 +568,7 @@ function fluctV(p) { return 20 - p.stab * 0.15; }
 
 /* 手动掷骰生效阶段（v6.4 / v5.3 §六.2）：仅夏/秋季赛季后赛与深渊总决赛（含季军赛）。
  * 常规赛 / 深渊预选 / 小组 / IVS 仍由系统自动取 r，不弹按钮、不展示反馈分档。 */
-function isManualDiceStage(stage) { return stage === "季后" || stage === "总决"; }
+function isManualDiceStage(stage) { return stage === "季后" || stage === "总决" || stage === "12进8"; }
 
 /* 6 档发挥反馈（仅展示层，不二次影响得分）：把 [−V,+V] 六等分，落点 r 取档。
  * 1–2 失常 / 3–4 稳定 / 5–6 超常；档位越高发挥越好。文案取自《文案设计 v1.2》§5。 */
@@ -475,12 +579,12 @@ const DICE_FEEDBACK = [
   { tier: 2, group: "失常", sub: "状态低迷", pool: [
     "状态没起来，节奏总慢半拍。今天得多靠脑子、少靠手。",
     "不太顺，但还没崩。咬住，别让小失误滚成大问题。"] },
-  { tier: 3, group: "稳定", sub: "四平八稳", pool: [
-    "稳，略偏保守。不出彩，但也不轻易给对手机会。",
-    "中规中矩，按部就班——先把基本盘守住。"] },
-  { tier: 4, group: "稳定", sub: "稳健发挥", pool: [
+  { tier: 3, group: "稳定", sub: "稳健发挥", pool: [
     "和训练赛里的你一模一样，不飘也不怵。",
     "状态在线，按自己的节奏走就行。"] },
+  { tier: 4, group: "稳定", sub: "四平八稳", pool: [
+    "稳，略偏保守。不出彩，但也不轻易给对手机会。",
+    "中规中矩，按部就班——先把基本盘守住。"] },
   { tier: 5, group: "超常", sub: "渐入佳境", pool: [
     "手感上来了，越打越顺——这一场有机会咬下来。",
     "状态比平时更亮，关键回合敢做动作了。"] },
@@ -515,7 +619,7 @@ function computeF(p, stage, oppPopBase, year, oppBonus, fdelta, buff, forcedRflo
   const diff = p.pop - oppPopBase;
   const cheer = diff >= 80 ? 5 : (diff >= 30 ? 3 : 0);
   let inner = cp + luckOff + rfloat + cheer + fdelta + buff;
-  if (stage === "预选" || stage === "小组" || stage === "总决") inner -= p._abyss_fatigue;
+  if (stage === "预选" || stage === "小组" || stage === "总决" || stage === "12进8") inner -= p._abyss_fatigue;
   if (p.temp_active) inner -= CONFIG.INJ_TEMP_F;
   if (p.teno_active) inner -= CONFIG.INJ_TENO_F;
   if (p.stamina < 20) inner -= 15;
@@ -555,9 +659,23 @@ function checkFMVP(p, year, fList) {
 }
 
 /* --------------------------- 结算辅助 ---------------------------------- */
-function settleChamp(p, kind, year, fmvp) {
+/* v4.0 名次资金（《demov3.0feedback·比赛》）：夏/秋季赛季后赛与深渊用专属名次表；
+ * IVS 及其它沿用旧口径（冠=CHAMP_REWARD、亚=/3、季=/6）。 */
+function placeMoney(kind, place) {
+  if (kind === "夏" || kind === "秋") return CONFIG.PLAYOFF_MONEY[place] || 0;
+  if (kind === "深渊") {
+    if (CONFIG.ABYSS_MONEY[place] != null) return CONFIG.ABYSS_MONEY[place];
+    for (const [lo, hi, m] of CONFIG.ABYSS_MONEY_RANGES) if (place >= lo && place <= hi) return m;
+    return 0;
+  }
+  if (place === 1) return CONFIG.CHAMP_REWARD[kind][1];
+  if (place === 2) return CONFIG.CHAMP_REWARD[kind][1] / 3;
+  if (place === 3) return CONFIG.CHAMP_REWARD[kind][1] / 6;
+  return 0;
+}
+function settleChamp(p, kind, year, fmvp, moneyOverride) {
   const [popR, moneyR] = CONFIG.CHAMP_REWARD[kind];
-  p.addPop(popR); p.money += moneyR; p.champ[kind] += 1;
+  p.addPop(popR); p.money += (moneyOverride != null ? moneyOverride : moneyR); p.champ[kind] += 1;
   p.champ_per_year[year] = (p.champ_per_year[year] || 0) + 1;
   if (p.first_champ_year === null) p.first_champ_year = year;
   if (p.teno_active) p.won_with_teno = true;
@@ -567,16 +685,19 @@ function settleChamp(p, kind, year, fmvp) {
   }
   p.fmvp_seq.push(!!fmvp);
 }
-function settleRunnerup(p, kind) { p.runnerups += 1; p.addPop(CONFIG.RUNNERUP_POP); p.money += CONFIG.CHAMP_REWARD[kind][1] / 3; }
-function settleThird(p, kind) { p.thirds += 1; p.addPop(CONFIG.THIRD_POP); p.money += CONFIG.CHAMP_REWARD[kind][1] / 6; }
+// demov4.1feedback·数字规范：亚/季军奖金按比例折算后取整入账，避免资金出现小数。
+function settleRunnerup(p, kind, moneyOverride) { p.runnerups += 1; p.addPop(CONFIG.RUNNERUP_POP); p.money += (moneyOverride != null ? moneyOverride : Math.round(CONFIG.CHAMP_REWARD[kind][1] / 3)); }
+function settleThird(p, kind, moneyOverride) { p.thirds += 1; p.addPop(CONFIG.THIRD_POP); p.money += (moneyOverride != null ? moneyOverride : Math.round(CONFIG.CHAMP_REWARD[kind][1] / 6)); }
+// 第 4 名及以后（深渊 5-8/9-12/13-16）：仅发名次资金，不计冠亚季。
+function settlePlace(p, kind, place) { p.money += placeMoney(kind, place); }
 function maxRunTrue(seq) { let best = 0, cur = 0; for (const v of seq) { cur = v ? cur + 1 : 0; best = Math.max(best, cur); } return best; }
 
 /* ----------------------- 半途特殊结局门槛 ------------------------------ */
 function specialTriggers(p, year) {
   const s = [];
   const noChamp = p.totalChamp === 0;
-  if (p.appearance > 75 && p.pop >= 70 && p.tech < 60 && noChamp && p.ev_count >= 5) s.push("签约艺人");
-  if (p.appearance > 80 && p.ev_count > 10 && p.pop >= 55) s.push("短剧演员");
+  if (p.appearance > 75 && p.pop >= 60 && p.tech < 60 && noChamp && p.ev_count >= 3) s.push("签约艺人");
+  if (p.appearance > 80 && p.ev_count >= 5 && p.pop >= 50) s.push("短剧演员");
   if (year > 3 && p.tac >= 80 && (p.tac - p.tech) >= 10 && p.pop >= 120) s.push("转行解说");
   if (year >= 5 && p.tac >= 90 && p.tech >= 80 && p.stab >= 85 && p.champ["深渊"] === 0 && (p.champ["夏"] + p.champ["秋"]) >= 1) s.push("转行教练");
   if (year >= 5 && p.money >= 50000 && p.pop >= 200) s.push("校长好");
@@ -638,7 +759,7 @@ function annualAwards(p, year) {
 // ctx: {stage, win, keyMatch, F, opp, team, cheer, fainted, year, age}
 function reasonTags(p, ctx) {
   const tags = [];
-  const survRef = { "常规": 55, "季后": 72, "IVS": 78, "预选": 56, "小组": 68, "总决": 78 }[ctx.stage] || 60;
+  const survRef = { "常规": 55, "季后": 72, "IVS": 78, "预选": 56, "小组": 68, "12进8": 72, "总决": 78 }[ctx.stage] || 60;
   if (ctx.win) {
     if (ctx.cheer >= 3) tags.push("high_pop_support");
     if (p.nextGameBuffUsed) tags.push("item_buff");
@@ -703,6 +824,13 @@ function computeAchievements(p, fullCareer, grandSlam, forced) {
   a["浪迹天涯"] = (p.transfer_count >= 3);
   a["轻伤不下火线"] = (p.injured_win >= 10);
   a["流量为王"] = (total === 0 && p.pop >= 130);
+  // v4.0 新增成就（《demov3.0feedback·成就》，多为隐藏）
+  a["绝活信仰玩家"] = (p.bp_conflict_count >= 2 && p.bp_signature_count >= p.bp_conflict_count);
+  a["返老还童"] = !!p.used_serum;
+  a["庄园快信"] = !!p.used_seal;
+  a["逆转未来"] = !!p.used_redo;
+  a["万能螺丝"] = !!p.changed_position;
+  a["人生百味"] = false;   // 白金成就：解锁所有结局和成就，由结局层结合图鉴判定后回填
   return a;
 }
 
@@ -715,9 +843,9 @@ function finalEnding(p, fullCareer, grandSlam, forced, ach) {
   if (ach["大器晚成"] && ach["浴血荣光"] && ach["百炼成钢"]) return "终章封王";
   if (ach["看台上的星海"] && ach["洲际之巅"] && ach["冠军选手"] && ach["全能选手"]) return "国民选手";
   if (dynasty) return "专属王朝";
-  if (total >= 1) return "金雨之下";
+  if (total >= 3) return "金雨之下";
   if (total === 0 && (p.runnerups + p.thirds) >= 5 && p.tech >= 85 && p.tac >= 85) return "无冕之王";
-  if (fullCareer && p.stab >= 80 && p.playoff_count >= 6) return "可靠老将";
+  if (fullCareer && p.stab >= 80 && p.playoff_count >= 6 && total >= 1 && total <= 2) return "可靠老将";
   if (fullCareer && p.playoff_count >= 6 && total <= 2) return "常青绿叶";
   if (fullCareer && p.pop >= 80 && total <= 2) return "联盟熟面孔";
   if (p.pop < 30 && p.money < 5000) return "隐入人海";
@@ -776,7 +904,36 @@ const ACH_DESC = {
   "浪迹天涯": "生涯转会 ≥3 次",
   "轻伤不下火线": "带伤取胜 ≥10 场",
   "流量为王": "全生涯 0 冠却人气 ≥130 万（隐藏）",
+  // v4.0 新增（《demov3.0feedback·成就》）
+  "绝活信仰玩家": "至少触发 2 次 BP 冲突且每次都选绝活角色",
+  "返老还童": "使用一次骨龄逆转血清",
+  "庄园快信": "使用一次庄园密信",
+  "逆转未来": "使用一次后悔药",
+  "万能螺丝": "为队伍转过位置",
+  "人生百味": "解锁所有结局和成就",
 };
+
+/* ----------------------- 成就 / 结局分级（v4.0《demov3.0feedback》） ----------------- *
+ * 成就：白金（人生百味）/ 黄金·传说级 / 白银·史诗级 / 青铜·普通级。
+ * 结局：黄金 / 白银 / 青铜 / 普通。分级用于成就弹出条与结局界面的字体颜色 / 特效。
+ * 隐藏成就在成就表里初始显示「？？？」，达成后才解锁。 */
+const ACH_TIER = {
+  "人生百味": "白金",
+  "金满贯": "黄金", "大满贯": "黄金", "专属王朝": "黄金", "电竞白月光": "黄金", "看台上的星海": "黄金",
+  "洲际之巅": "白银", "全能选手": "白银", "一人一城": "白银", "浴血荣光": "白银", "大器晚成": "白银",
+  "光荣的荆棘路": "白银", "百炼成钢": "白银", "昙花": "白银", "天妒英才": "白银", "遗珠": "白银", "绝活信仰玩家": "白银",
+  "冠军选手": "青铜", "FMVP": "青铜", "年度最佳演绎": "青铜", "轻伤不下火线": "青铜", "浪迹天涯": "青铜",
+  "流量为王": "青铜", "操作手": "青铜", "战队大脑": "青铜", "返老还童": "青铜", "庄园快信": "青铜", "逆转未来": "青铜", "万能螺丝": "青铜",
+};
+const ACH_HIDDEN = new Set(["绝活信仰玩家", "返老还童", "庄园快信", "逆转未来", "万能螺丝"]);
+const ENDING_TIER = {
+  "时代丰碑": "黄金", "黄金之路": "黄金", "终章封王": "黄金", "国民选手": "黄金", "专属王朝": "黄金",
+  "金雨之下": "白银", "无冕之王": "白银", "可靠老将": "白银", "校长好": "白银",
+  "常青绿叶": "青铜", "联盟熟面孔": "青铜", "签约艺人": "青铜", "短剧演员": "青铜", "转行解说": "青铜", "转行教练": "青铜",
+  "隐入人海": "普通", "黯然退役": "普通", "断开链接": "普通", "饮水机管理员": "普通", "你被开除了！": "普通", "伤重退役": "普通",
+};
+function achTier(name) { return ACH_TIER[name] || "青铜"; }
+function endingTier(name) { return ENDING_TIER[name] || "普通"; }
 
 /* ---------------- 赛后因果解释·文案池(严格取自《文案设计 v1.1》§六) ----- */
 const REASON_TEXT = {
@@ -835,7 +992,7 @@ const REASON_TEXT = {
   opponent_strong: [
     "你已经打得足够好了，只是对面今天几乎没有给出任何破绽。",
     "这不是一场轻易能跨过去的比赛。对手站在你面前，就像一堵准备了整个赛季的墙。",
-    "你把能做的都做了，但世界赛的舞台从来不会因为努力就降低难度。"],
+    "你把能做的都做了，但深渊全球赛的舞台从来不会因为努力就降低难度。"],
   high_pop_support: [
     "台下粉丝为你举起的灯牌汇成了一片应援海，也为电竞椅上的你注入了能量。",
     "你听见有人喊你的 ID。那一刻，你突然觉得自己还能再多撑一局。",
@@ -875,7 +1032,7 @@ function pickReason(tags, win) {
 
 /* ----------------- FMVP 颁奖词池(严格取自《文案设计 v1.1》§七) ---------- *
  * 正文取自对应风格池，正文后续接固定结尾句：
- *   恭喜 {战队}_{ID} 荣获 {年份}{赛事名称}总决赛 FMVP！
+ *   恭喜 {战队}_{ID} 荣获第{n}赛年{赛事名称}总决赛 FMVP！（demov4.1feedback3：年份改赛年口径）
  * --------------------------------------------------------------------- */
 const FMVP_POEMS = {
   fmvp_generic: [
@@ -937,7 +1094,7 @@ function fmvpSpeech(p, kind, year, ctx = {}) {
   else if (p.role === "监管者") pool = FMVP_POEMS.fmvp_hunter_dominance;
   else if (p.role === "求生者") pool = FMVP_POEMS.fmvp_survivor_carry;
   const poem = choiceOf(pool);
-  const credit = `恭喜 ${p.name} 荣获 ${2025 + year}${fmvpEventName(kind)}总决赛 FMVP！`;
+  const credit = `恭喜 ${p.name} 荣获第${year}赛年${fmvpEventName(kind)}总决赛 FMVP！`;
   return { poem, credit };
 }
 
@@ -1023,6 +1180,10 @@ const TRAIN_EVENTS = {
     { label: "认真整活金句频出", apply(p){ p.addPop(3); p.stamina-=18; let ex=""; if(Math.random()<0.15){ p.addPop(3); ex="——其中一句还被剪成切片喜提新梗出圈！（额外人气 +3）"; } return "你在解说席上金句不断，弹幕笑成一片。（人气 +3、体力 −18）"+ex; } },
     { label: "全程专业讲解", apply(p){ p.grow("tac",1); p.addPop(1); p.stamina-=15; return "你认真拆解了每一波团战的思路，被夸「这才是选手视角」。（战术 +1、人气 +1、体力 −15）"; } },
     { label: "推说要训练婉拒", apply(p){ p.grow("tech",1); p.grow("tac",1); return "你婉拒了邀约，回训练室继续磨自己的功课。（技术 +1、战术 +1）"; } } ] },
+  /* ----------- v4.0 新增（《demov3.0feedback·突发事件·训练》） ----------- */
+  "后院起火": { flavor: "最近你的粉丝群中不是很太平，房管组和散粉之间起了冲突，你选择——", options: [
+    { label: "不理不睬，粉丝之间的事情让他们自己解决吧", apply(p){ p.addPop(-5); p.grow("tech",5); return "你把精力全部投入训练，你的冷漠也令粉丝心寒。（人气 −5、技术 +5）"; } },
+    { label: "从中协调，试图化解矛盾", apply(p){ p.grow("stab",3); p.grow("tac",2); p.stamina-=15; return "你花了一些时间和精力，但这是值得的。（稳定 +3、战术 +2、体力 −15）"; } } ] },
 };
 const TRAIN_EVENT_KEYS = Object.keys(TRAIN_EVENTS);
 /* 商业类训练事件（v6.0）：抽取权重 ×bizMult（=0.5+容貌/100；商业休整年再 ×2.5），其余事件权重 1.0。 */
@@ -1089,16 +1250,18 @@ function rollSpotlight(p, win, abnormal) {
 
 /* --------------------------- 暴露到全局 -------------------------------- */
 window.IVL = {
-  CONFIG, SHOP_ITEMS, SHOP_RARE, SHOP_RARE_P, buildShopStock, Player, rnd, randint, triangular, gauss, clamp, choiceOf,
+  CONFIG, SHOP_ITEMS, SHOP_RARE, SHOP_RARE_P, buildShopStock, Player, rnd, randint, triangular, gauss, clamp, choiceOf, shuffle,
   OPP_POP: CONFIG.OPP_POP, WIN_POP: CONFIG.WIN_POP, CHAMP_REWARD: CONFIG.CHAMP_REWARD,
   selectThreshold, growthTech, growthTac, growthPhys, oppDelta, sampleOpp, popThr3,
+  generateTeams, TEAM_POOLS, allocateFourStats, streamMoneyGain,
   applyTraining, tenoProb, rollInjury, healInjury, endCompetition,
   matchStartStamina, gameCost, luckCheck, rollMatchEvent, computeF, settleGame,
   fluctV, isManualDiceStage, diceTier, DICE_FEEDBACK, noBadFloor, rollFluct,
-  teammateAvgs, checkFMVP, settleChamp, settleRunnerup, settleThird, maxRunTrue,
+  teammateAvgs, checkFMVP, placeMoney, settleChamp, settleRunnerup, settleThird, settlePlace, maxRunTrue,
   specialTriggers, commercialRestEligible, transferRollForced, doTransfer, transferAmbient,
   annualAwards, reasonTags, pickReason, fmvpSpeech, FMVP_POEMS,
   computeAchievements, finalEnding, ENDING_TEXT, ACH_DESC, REASON_TEXT,
+  ACH_TIER, ACH_HIDDEN, ENDING_TIER, achTier, endingTier,
   TRAIN_EVENTS, TRAIN_EVENT_KEYS, BIZ_EVENT_KEYS, bizMult, pickTrainingEvent,
   SPOTLIGHT_EVENTS, SPOTLIGHT_P, rollSpotlight,
 };

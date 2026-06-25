@@ -48,6 +48,12 @@
 #cc .inp { width: 100%; background: var(--bg); border: 1.5px solid var(--line2); border-radius: 13px; color: var(--fg); font-family: 'Noto Sans SC', sans-serif; font-size: 16px; padding: 14px 16px; outline: none; transition: .18s; }
 #cc .inp::placeholder { color: #46506a; }
 #cc .inp:focus { border-color: var(--gold); box-shadow: 0 0 0 4px var(--gold-soft); }
+/* 随机名称按钮（v4.0） */
+#cc .inprow { display: flex; gap: 10px; align-items: stretch; }
+#cc .inprow .inp { flex: 1; }
+#cc .btn-roll { flex: 0 0 auto; background: var(--surface2); color: var(--gold2); border: 1.5px solid var(--line2); border-radius: 13px; padding: 0 16px; font-size: 18px; line-height: 1; cursor: pointer; transition: .18s; }
+#cc .btn-roll:hover { border-color: var(--gold2); background: var(--raise); transform: translateY(-1px); }
+#cc .btn-roll:active { transform: rotate(180deg); }
 #cc .signrow { margin-top: 24px; background: var(--bg); border: 1px solid var(--line2); border-radius: 16px; padding: 18px 22px; display: flex; align-items: center; gap: 18px; position: relative; overflow: hidden; }
 #cc .signrow::after { content: ""; position: absolute; right: -30px; top: -30px; width: 120px; height: 120px; border-radius: 50%; background: radial-gradient(circle, var(--gold-soft), transparent 70%); }
 #cc .signrow .badge { width: 46px; height: 46px; border-radius: 12px; background: var(--gold-soft); color: var(--gold2); display: grid; place-items: center; font-family: 'Sora', sans-serif; font-weight: 700; }
@@ -72,7 +78,10 @@
 #cc .btn { cursor: pointer; border: none; font-family: 'Noto Sans SC', sans-serif; font-weight: 600; border-radius: 12px; transition: .18s; font-size: 14px; }
 #cc .btn-ghost { background: var(--surface2); color: var(--gold2); border: 1px solid var(--line2); padding: 10px 17px; }
 #cc .btn-ghost:hover { border-color: var(--gold2); }
+#cc .attrtotal { font-family: 'Sora', sans-serif; font-size: 12px; color: var(--gold2); background: var(--gold-soft); border: 1px solid rgba(226,181,62,.26); border-radius: 999px; padding: 2px 12px; margin-left: 10px; vertical-align: middle; }
 #cc .attrs { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 30px; }
+/* 容貌 / 人气 单独一行（v4.0） */
+#cc .attrextra { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 30px; margin-top: 18px; padding-top: 18px; border-top: 1px dashed var(--line2); }
 #cc .attr .top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
 #cc .attr .nm { font-size: 14px; font-weight: 600; }
 #cc .attr .nm span { color: var(--dim); font-size: 12px; font-weight: 400; margin-left: 6px; }
@@ -103,6 +112,6 @@
 @media (max-width: 760px) {
   #cc .fieldrow { grid-template-columns: 1fr; }
   #cc .opts.two { grid-template-columns: 1fr; }
-  #cc .attrs { grid-template-columns: 1fr; }
+  #cc .attrs, #cc .attrextra { grid-template-columns: 1fr; }
   #cc .card { padding: 24px 20px; }
 }
