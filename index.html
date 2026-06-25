@@ -6,7 +6,14 @@
   <title>IVL 模拟器 · 可玩切片 demo-v4.2（策划 v7.1 / 数值 v6.1 / 文案 v2.1）</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Chakra+Petch:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;600;700;900&display=swap" />
+  <!-- v4.2 修复（移动端打不开）：Google Fonts 在国内/微信内置浏览器常被墙或超时，
+       而外链样式表默认是「渲染阻塞」资源——请求挂起会导致连启动页都画不出、表现为
+       「点继续访问后卡住/白屏」。改为 media=print + onload 切换的非阻塞加载：页面立即
+       用系统字体（PingFang SC / 系统无衬线）渲染，字体可达时再异步升级；不可达则一直
+       用系统字体兜底，绝不阻塞首屏。 -->
+  <link rel="stylesheet" media="print" onload="this.media='all'"
+        href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Chakra+Petch:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;600;700;900&display=swap" />
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Chakra+Petch:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;600;700;900&display=swap" /></noscript>
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="chargen.css" />
   <!-- 访问统计：GoatCounter（免费 / 轻量 / 无 cookie，GitHub Pages 无内置统计需自行接入）。
