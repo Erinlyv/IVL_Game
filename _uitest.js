@@ -137,6 +137,20 @@ async function run() {
   }
   console.log(`UI 冲烟完成：ticks=${ticks}，跑通生涯 ${endings.length} 段`);
   console.log("结局序列：", endings);
+
+  // 访问统计埋点回归（GoatCounter track()）：jsdom 下 window.goatcounter 不存在，
+  // track() 必须静默 no-op——既不抛错、也不阻塞流程（上面整局跑通即已隐式覆盖）。
+  // 这里再显式断言：函数存在、无统计脚本时调用安全、once 去重生效、真实 count 会被调用。
+  if (typeof dom.window.track !== "function") { throw new Error("track() 未定义"); }
+  dom.window.track("smoketest_noop");                 // 无 goatcounter，应安全 no-op
+  dom.window.track("smoketest_once", { once: true });
+  let calls = 0;
+  dom.window.goatcounter = { count: () => { calls++; } };
+  dom.window.track("smoketest_evt");                  // 有 count，应上报 1 次
+  dom.window.track("smoketest_once", { once: true }); // once 已记录，应被去重（不再上报）
+  if (calls !== 1) { throw new Error(`track() 上报次数异常：期望 1，实际 ${calls}`); }
+  delete dom.window.goatcounter;
+  console.log("✓ track() 埋点断言通过（no-op 安全 / once 去重 / 正常上报）");
 }
 
 run().then(() => process.exit(0)).catch((e) => { console.error("UI 运行期异常：", e); process.exit(1); });

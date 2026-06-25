@@ -1403,3 +1403,108 @@ body.settle-mode .choice{ text-align:center; align-items:center; min-width:260px
   .champgrid{ grid-template-columns:repeat(2,1fr) } .honorgrid{ grid-template-columns:repeat(2,1fr) }
   .sc-ename{ font-size:30px }
 }
+
+/* ============================================================================
+ * 一键生成分享图浮层（v4.2 · demov4.1feedback4·结局图片生成）
+ * ========================================================================== */
+.share-modal{ position:fixed; inset:0; z-index:5200; display:none; align-items:center; justify-content:center;
+  padding:max(20px,env(safe-area-inset-top)) 16px max(20px,env(safe-area-inset-bottom));
+  background:rgba(5,7,13,.78); backdrop-filter:blur(6px); }
+.share-modal.show{ display:flex; }
+.share-sheet{ width:min(440px,100%); max-height:92dvh; display:flex; flex-direction:column;
+  background:var(--surface,#0e1626); border:1px solid var(--line2,rgba(255,255,255,.12)); border-radius:18px; overflow:hidden;
+  box-shadow:0 24px 60px rgba(0,0,0,.5); }
+.share-head{ display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid var(--line,rgba(255,255,255,.08)); }
+.share-head .ttl{ font-family:'Sora',sans-serif; font-weight:700; font-size:15px; color:var(--fg,#eef2f8); }
+.share-x{ width:44px; height:44px; margin:-8px -8px -8px 0; border:none; background:none; color:var(--dim,#9fabc2);
+  font-size:26px; line-height:1; cursor:pointer; border-radius:10px; }
+.share-x:hover{ color:var(--fg,#eef2f8); background:rgba(255,255,255,.06); }
+.share-imgwrap{ flex:1; overflow:auto; padding:14px; -webkit-overflow-scrolling:touch; }
+.share-img{ display:block; width:100%; height:auto; border-radius:12px; }
+.share-hint{ margin:0; padding:0 16px 8px; text-align:center; font-size:12.5px; color:var(--dim,#9fabc2); }
+.share-acts{ padding:8px 16px max(16px,env(safe-area-inset-bottom)); }
+.share-dl{ display:flex; align-items:center; justify-content:center; min-height:46px; border-radius:12px;
+  font-family:'Sora',sans-serif; font-weight:700; font-size:15px; text-decoration:none; color:#1a1205;
+  background:linear-gradient(135deg,#f5cf6a,#e2b53e); box-shadow:0 10px 26px rgba(226,181,62,.34);
+  transition:filter .18s, transform .18s; touch-action:manipulation; }
+.share-dl:hover{ filter:brightness(1.05); transform:translateY(-1px); }
+.share-dl:active{ transform:translateY(0); }
+@media (prefers-reduced-motion:reduce){ .share-dl{ transition:none } }
+
+/* ============================================================================
+ * 移动端适配（v4.2 · demov4.1feedback4·移动端适配）
+ * 仅作用于 ≤600px 手机视口；>600px（平板 / 桌面）规则完全不受影响，电脑端体验不变。
+ * 依据 ui-ux-pro-max：触控目标 ≥44px、安全区规避、min-h-dvh、无横向溢出、8pt 间距节奏。
+ * ========================================================================== */
+@media (max-width: 600px) {
+  html, body { overflow-x: hidden; }
+
+  /* —— 主容器 / 安全区 —— */
+  .app {
+    min-height: 100dvh;
+    padding: 12px max(12px, env(safe-area-inset-right)) calc(40px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  }
+
+  /* —— 顶栏 —— */
+  .topbar { gap: 8px; padding: 4px 0 12px; margin-bottom: 14px; }
+  .crest { width: 40px; height: 40px; border-radius: 11px; font-size: 15px; }
+  .logo { font-size: 20px; }
+  .tagline { font-size: 12px; width: 100%; }
+
+  /* —— 主交互面板（present / say / choose 渲染处）—— */
+  .panel { padding: 18px 15px; min-height: auto; border-radius: var(--r-md); }
+  .panel-head { margin-bottom: 14px; }
+  .panel-head h2 { font-size: 19px; }
+
+  /* —— 选项 / 训练 / 强度：触控目标 ≥44px、间距防误触 —— */
+  .choices { margin-top: 16px; gap: 10px; }
+  .choice { padding: 14px 15px; min-height: 48px; }
+  .intensity { gap: 6px; }
+  .intbtn { padding: 10px 16px; min-height: 44px; }
+  .int-hint { width: 100%; margin-left: 0; margin-top: 2px; }
+  .trainproj { padding: 14px; min-height: 60px; }
+
+  /* —— 商店：四列网格在窄屏改为竖向堆叠，避免挤压 —— */
+  .shoprow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 12px 14px; }
+  .si-main { flex: 1 1 100%; }
+  .si-price { margin-left: 0; }
+  .si-buy { min-height: 44px; padding: 10px 18px; margin-left: auto; }
+  .si-q { min-width: 30px; }
+
+  /* —— 通用弹窗：用 dvh、加大关闭热区、底部留安全区 —— */
+  .bagx-modal, .fmvp-modal { padding: 14px max(14px, env(safe-area-inset-left)) max(14px, env(safe-area-inset-bottom)); }
+  .bagx-sheet { max-height: 90dvh; }
+  .bagx-x { width: 40px; height: 40px; font-size: 20px; }
+  .bagx-item, .bagx-use { min-height: 44px; }
+
+  /* —— 输入框：≥16px 防 iOS 自动放大 + ≥44px 触控高度 —— */
+  .text-input { font-size: 16px; min-height: 48px; }
+
+  /* —— 全屏 overlay · 常规赛转播台（#rs-root）—— */
+  #rs-root .topbar { padding: max(12px, env(safe-area-inset-top)) 14px 12px; gap: 10px; }
+  #rs-root .brand .logo { font-size: 20px; }
+  #rs-root .arena-head { padding: 14px 14px 6px; }
+  #rs-root .arena-body { padding: 8px 14px 14px; }
+  #rs-root .versus { gap: 10px; }
+  #rs-root .vsmid { min-width: auto; }
+  #rs-root .reportcol { max-height: 48vh; }
+  #rs-root .actions { position: sticky; bottom: 0; z-index: 5;
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom)); background: rgba(8, 13, 24, .94); }
+  #rs-root .modal { padding: 16px; }
+
+  /* —— 全屏 overlay · 季后赛 / 深渊晋级图（#koscreen）—— */
+  #koscreen .ko-top { padding: max(12px, env(safe-area-inset-top)) 14px 12px; gap: 10px; }
+  #koscreen .brand .logo { font-size: 20px; }
+  #koscreen .matchcard { padding: 6px 14px 14px; }
+  /* 对阵树过宽时横向滚动，加惯性滚动并提示可滑动；不强行重排，保留完整晋级图。 */
+  #koscreen .bracketwrap { padding: 14px; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+  #koscreen .legend { margin-left: 0; flex-wrap: wrap; }
+  #koscreen .modal { padding: 16px; }
+
+  /* —— 成就弹出条：避开右侧安全区、限制宽度 —— */
+  .achstack { right: max(12px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom)); }
+  .achpop { min-width: 200px; max-width: calc(100vw - 28px); }
+
+  /* —— toast 居中避开底部安全区 —— */
+  .toast { bottom: calc(20px + env(safe-area-inset-bottom)); }
+}
