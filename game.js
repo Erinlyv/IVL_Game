@@ -31,7 +31,7 @@ const E = window.IVL;
 const $ = (sel) => document.querySelector(sel);
 
 // v4.0：战报卡二维码指向的体验地址（《demov3.0feedback·结算界面·二维码》）。部署后可替换为正式短链。
-const GAME_URL = "https://ivl-sim.example.com";
+const GAME_URL = "https://erinlyv.github.io/IVL_Game/";
 
 /* 称号显示口径（v6.4 / v1.2 修复）：严格按定位取值——求生者→「人皇」、监管者→「屠皇」，
  * 不再出现"监管者在生涯回顾中被误显示为人皇"的串号 bug。 */
@@ -50,6 +50,27 @@ let shopPreview = null;        // v4.0：购物车中属性商品的预览增量
 const YEAR_PHASES = ["季前训练", "夏季赛", "IVS", "夏秋训练", "秋季赛", "深渊前训练", "深渊", "赛季末"];
 let yearPhase = 0;
 function setYearPhase(i) { yearPhase = i; renderHUD(); }
+
+/* ============================ 轻量访问统计 ============================== */
+/* GitHub Pages 无内置统计，用 GoatCounter 自定义事件数人头 + 跑通漏斗。
+ * 真实统计地址在 index.html 的 <script data-goatcounter> 配置；本函数只负责上报。
+ * 设计约束：埋点绝不能影响游戏——未加载脚本（本地 / jsdom 测试 / 占位符未替换）时
+ * 静默 no-op；上报异常只 console 记录、不重抛、不阻塞流程（非静默吞：有日志可追溯）。
+ * opts.once=true 时同名事件单局只上报一次（用于「首战」这类里程碑去重）。 */
+const _trackedOnce = new Set();
+function track(name, opts = {}) {
+  try {
+    if (opts.once) {
+      if (_trackedOnce.has(name)) { return; }
+      _trackedOnce.add(name);
+    }
+    const gc = (typeof window !== "undefined") ? window.goatcounter : null;
+    if (!gc || typeof gc.count !== "function") { return; }
+    gc.count({ path: "evt/" + name, title: name, event: true });
+  } catch (err) {
+    console.warn("track() 上报失败（不影响游戏）:", name, err);
+  }
+}
 
 /* ============================ UI 基础原语 ============================== */
 const main = () => $("#main");
@@ -292,6 +313,8 @@ function useItem(name) {
   }
   P.inv[name] -= 1;
   renderHUD();
+  // v4.2（demov4.1feedback4）：用药补体力后，训练面板里因体力不足灰掉的项目即时亮起。
+  if (typeof trainPanelRefresh === "function") { trainPanelRefresh(); }
 }
 let flashTimer = null;
 function flash(msg) {
@@ -389,6 +412,7 @@ async function characterCreation() {
   yearPhase = 0;
   renderHUD();
   pushLog(`${P.name} 出道，定位${P.role}。`, "good");
+  track("character_created");   // 漏斗②：完成签约 / 角色创建
 }
 
 function rollCardHtml(t) {
@@ -498,6 +522,9 @@ function trainBody() {
       <span class="int-hint">${curIntensity === "高强度" ? "效果/消耗整体 +20%" : (curIntensity === "休养" ? "效果/消耗整体 −20%" : "标准强度")}${P.rest_active ? " ·休整收益×0.8" : ""}</span></div>
     <div class="trainprojs">${trainProjsHtml()}</div>`;
 }
+// v4.2 修复（demov4.1feedback4·优化训练期体能）：训练回合期间注册的面板刷新回调。
+// 用道具补体力后由 useItem 调用，使因体力不足而灰掉的训练项目立即重新可点，无需切换强度。
+let trainPanelRefresh = null;
 function trainingTurn(turn, total) {
   return new Promise((resolve) => {
     main().innerHTML = `
@@ -506,7 +533,14 @@ function trainingTurn(turn, total) {
       <div class="panel-body">${trainBody()}</div>`;
     const rebind = () => {
       main().querySelectorAll(".intbtn").forEach(b => { b.onclick = () => { curIntensity = b.dataset.int; main().querySelector(".panel-body").innerHTML = trainBody(); rebind(); }; });
-      main().querySelectorAll(".trainproj:not(.disabled)").forEach(b => { b.onclick = () => resolve({ proj: b.dataset.proj, intensity: curIntensity }); });
+      main().querySelectorAll(".trainproj:not(.disabled)").forEach(b => { b.onclick = () => { trainPanelRefresh = null; resolve({ proj: b.dataset.proj, intensity: curIntensity }); }; });
+    };
+    // 仅在本训练回合 DOM 仍在场时重绘；选定项目（resolve）后置空，避免误刷其它界面。
+    trainPanelRefresh = () => {
+      const pb = main().querySelector(".panel-body");
+      if (!pb || !pb.querySelector(".trainprojs")) return;
+      pb.innerHTML = trainBody();
+      rebind();
     };
     rebind();
   });
@@ -814,6 +848,7 @@ function reasonHtml(r) { return r ? `<p class="reason">「${r}」</p>` : ""; }
 // 队名/队标/数值取真实游戏数据，赛果由真实 playMatch 结算。返回 {rank, inPlayoff, wins}。
 async function regularSeason(kind) {
   setStage(`${kind}季赛·常规赛`);
+  track("first_match", { once: true });   // 漏斗③：本局首次进入正式比赛
   P.stamina = E.matchStartStamina(P); P.fired_events = new Set();
   renderHUD();                 // 进入比赛周期即时刷新体力（demov2.1feedback2）
   const res = await runRegularSeasonScreen(kind);   // {rank, inPlayoff, wins}
@@ -1801,6 +1836,8 @@ async function ending(grandSlam, forced, fullCareer) {
   const finalName = isSpecial ? forced : E.finalEnding(P, fullCareer, grandSlam, forced, ach);
 
   pushLog(`生涯结束：${finalName}`, isForced ? "bad" : "good");
+  track("ending_reached");   // 漏斗④：看到结局（通关一段生涯）
+  track("ending_kind_" + (isForced ? "forced" : (isSpecial ? "special" : "final")));
 
   const got = Object.keys(ach).filter(k => ach[k]);
   // 生涯战报卡数据（v3.0）：用于可截图分享 + 持久化存档。
@@ -1833,12 +1870,12 @@ async function ending(grandSlam, forced, fullCareer) {
       // demov4.1feedback2·结局界面：三个按钮文字居中、去除 emoji。
       choices: [
         { label: "全部结局与成就", cls: "ghost" },
-        { label: "复制战报文案", cls: "ghost" },
+        { label: "一键生成图片分享", cls: "ghost" },
         { label: "再来一局", cls: "primary" },
       ],
     });
     if (choice === 0) { await codexPanel(rec, codex); continue; }
-    if (choice === 1) { await copyWarCard(rec); continue; }
+    if (choice === 1) { await shareWarCardImage(rec); continue; }
     break;
   }
   if (typeof document !== "undefined" && document.body) { document.body.classList.remove("settle-mode"); }
@@ -1938,7 +1975,7 @@ function warCardHtml(rec, isForced) {
           <div class="sc-sechead between"><div class="left"><span class="bar"></span><h3>已达成就</h3></div><div class="prog">本档解锁 <b>${rec.achs.length}</b> / ${allA}</div></div>
           <div class="chips">${chips}</div>
         </div>
-        <div class="sc-foot"><span class="tip">📸 截图保存这张战报卡，晒到同人圈吧！</span><span class="sc-date">${rec.date} · #IVL模拟器 demo-v4.1</span></div>
+        <div class="sc-foot"><span class="tip">📸 截图保存这张战报卡，晒到同人圈吧！</span><span class="sc-date">${rec.date} · #IVL模拟器 demo-v4.2</span></div>
       </div>
     </div>`;
 }
@@ -1956,23 +1993,253 @@ function warCardText(rec) {
   ];
   if (rec.spotlights.length) lines.push(`名场面：${rec.spotlights.join("、")}`);
   lines.push(`解锁成就（${rec.achs.length}）：${rec.achs.join("、") || "无"}`);
-  lines.push(`#IVL模拟器 demo-v4.0`);
+  lines.push(`#IVL模拟器 demo-v4.2`);
   return lines.join("\n");
 }
 
-async function copyWarCard(rec) {
-  const txt = warCardText(rec);
-  let ok = false;
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(txt);
-      ok = true;
+/* ----------------------- 一键生成战报分享图（v4.2 · demov4.1feedback4） --------------------- *
+ * 用 Canvas 2D 手绘一张自包含的竖版战报卡，导出 PNG。相比 html2canvas/foreignObject，
+ * 手绘 canvas 无需额外依赖，且不受外部字体 / 跨域图片 / 画布污染影响，手机与微信内置浏览器
+ * 均可「长按图片保存」。二维码沿用同源 qr-ivlgame.png（同源不污染画布，加载失败则跳过）。
+ * --------------------------------------------------------------------- */
+const SHARE_TIER_COLOR = { "黄金": "#f5cf6a", "白银": "#cfd8e6", "青铜": "#d6a06a", "普通": "#9fabc2" };
+
+// 加载二维码图片（同源），失败返回 null，不阻断出图。
+function loadQrImage() {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = "qr-ivlgame.png";
+  });
+}
+
+// 把 rec 绘制成一张竖版战报卡，返回 canvas（已按 2x 像素密度渲染，文字清晰）。
+function renderShareCanvas(rec, qrImg) {
+  const S = 2;                       // 渲染倍率（高清）
+  const LW = 760, P = 44, CW = LW - 2 * P;
+  const cv = document.createElement("canvas");
+  cv.width = LW * S; cv.height = 2300 * S;
+  const ctx = cv.getContext("2d");
+  ctx.scale(S, S);
+  ctx.textBaseline = "top";
+  const FB = "'Noto Sans SC','PingFang SC',sans-serif";
+  const FH = "'Sora','Noto Sans SC',sans-serif";
+  const gold = "#f5cf6a";
+  const tier = E.endingTier(rec.final);
+  const tierColor = SHARE_TIER_COLOR[tier] || "#9fabc2";
+
+  const rr = (x, y, w, h, r) => {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  };
+  const wrap = (text, font, maxW) => {
+    ctx.font = font; const out = []; let line = "";
+    for (const ch of String(text)) {
+      if (ch === "\n") { out.push(line); line = ""; continue; }
+      if (ctx.measureText(line + ch).width > maxW && line) { out.push(line); line = ch; }
+      else line += ch;
     }
+    if (line) out.push(line);
+    return out;
+  };
+
+  // 背景
+  const bg = ctx.createLinearGradient(0, 0, 0, 2300);
+  bg.addColorStop(0, "#0d1426"); bg.addColorStop(.5, "#0a0f1d"); bg.addColorStop(1, "#05070d");
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, LW, 2300);
+  const glow = ctx.createRadialGradient(LW / 2, -60, 40, LW / 2, -60, 560);
+  glow.addColorStop(0, "rgba(226,181,62,.18)"); glow.addColorStop(1, "rgba(226,181,62,0)");
+  ctx.fillStyle = glow; ctx.fillRect(0, 0, LW, 600);
+
+  let y = 48;
+  // —— 顶部品牌行 ——
+  ctx.font = `800 24px ${FH}`; ctx.fillStyle = gold; ctx.textAlign = "left";
+  ctx.fillText("IVL 模拟器", P, y);
+  ctx.font = `600 12px ${FH}`; ctx.fillStyle = "#7c89a3";
+  ctx.fillText("CAREER REPORT", P, y + 30);
+  y += 64;
+
+  // —— 选手头像 + ID ——
+  const crest = 72;
+  ctx.fillStyle = "rgba(232,93,154,.16)"; rr(P, y, crest, crest, 16); ctx.fill();
+  ctx.strokeStyle = "rgba(232,93,154,.6)"; ctx.lineWidth = 1.5; rr(P, y, crest, crest, 16); ctx.stroke();
+  ctx.font = `800 34px ${FH}`; ctx.fillStyle = "#ffd6e6"; ctx.textAlign = "center";
+  ctx.fillText(koMono(rec.teamName), P + crest / 2, y + 16);
+  ctx.textAlign = "left";
+  ctx.font = `800 26px ${FH}`; ctx.fillStyle = "#eef2f8";
+  ctx.fillText(rec.name, P + crest + 18, y + 8);
+  ctx.font = `600 14px ${FB}`; ctx.fillStyle = gold;
+  ctx.fillText(`${rec.idShort} · ${rec.role}`, P + crest + 18, y + 42);
+  y += crest + 26;
+
+  const hr = () => { ctx.strokeStyle = "rgba(255,255,255,.09)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(P, y); ctx.lineTo(LW - P, y); ctx.stroke(); y += 26; };
+  hr();
+
+  // —— 最终结局 ——
+  ctx.font = `600 12px ${FH}`; ctx.fillStyle = "#7c89a3"; ctx.textAlign = "left";
+  ctx.fillText("FINAL ENDING · 最终结局", P, y); y += 24;
+  ctx.font = `800 42px ${FH}`; ctx.fillStyle = tierColor;
+  ctx.shadowColor = tierColor; ctx.shadowBlur = tier === "黄金" ? 22 : 0;
+  ctx.fillText(rec.final, P, y); ctx.shadowBlur = 0; y += 52;
+  ctx.font = `700 13px ${FB}`; ctx.fillStyle = tierColor;
+  ctx.fillText(`${tier}结局`, P, y); y += 28;
+  const quote = (E.ENDING_TEXT[rec.final] || "").replace("玩家ID", rec.playerId);
+  ctx.fillStyle = "#c4ccdc";
+  wrap(quote, `400 15px ${FB}`, CW).forEach((ln) => { ctx.font = `400 15px ${FB}`; ctx.fillText(ln, P, y); y += 25; });
+  y += 14; hr();
+
+  // —— 生涯六维雷达 ——
+  ctx.font = `700 16px ${FH}`; ctx.fillStyle = "#eef2f8"; ctx.fillText("生涯六维", P, y); y += 30;
+  const dims = [
+    { k: "技术", v: rec.tech, label: Math.round(rec.tech) },
+    { k: "战术", v: rec.tac, label: Math.round(rec.tac) },
+    { k: "体能", v: rec.phys, label: Math.round(rec.phys) },
+    { k: "稳定", v: rec.stab, label: Math.round(rec.stab) },
+    { k: "容貌", v: rec.appearance, label: Math.round(rec.appearance) },
+    { k: "人气", v: Math.min(100, rec.pop), label: Math.round(rec.pop) + "万" },
+  ];
+  const RS = 300, Rr = RS / 2 - 50, cx = LW / 2, cy = y + RS / 2;
+  const N = dims.length;
+  const ang = (i) => (-90 + i * 360 / N) * Math.PI / 180;
+  const pt = (i, r) => [cx + Math.cos(ang(i)) * r, cy + Math.sin(ang(i)) * r];
+  [.25, .5, .75, 1].forEach((f) => {
+    ctx.beginPath();
+    dims.forEach((d, i) => { const [x, py] = pt(i, Rr * f); i ? ctx.lineTo(x, py) : ctx.moveTo(x, py); });
+    ctx.closePath(); ctx.strokeStyle = "rgba(255,255,255,.08)"; ctx.lineWidth = 1; ctx.stroke();
+  });
+  dims.forEach((d, i) => { const [x, py] = pt(i, Rr); ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(x, py); ctx.strokeStyle = "rgba(255,255,255,.07)"; ctx.stroke(); });
+  ctx.beginPath();
+  dims.forEach((d, i) => { const [x, py] = pt(i, Rr * Math.min(100, d.v) / 100); i ? ctx.lineTo(x, py) : ctx.moveTo(x, py); });
+  ctx.closePath(); ctx.fillStyle = "rgba(245,207,106,.18)"; ctx.fill();
+  ctx.strokeStyle = gold; ctx.lineWidth = 2; ctx.stroke();
+  dims.forEach((d, i) => {
+    const [px, py] = pt(i, Rr * Math.min(100, d.v) / 100);
+    ctx.beginPath(); ctx.arc(px, py, 3.4, 0, Math.PI * 2); ctx.fillStyle = gold; ctx.fill();
+    const [lx, ly] = pt(i, Rr + 26);
+    ctx.textAlign = Math.abs(lx - cx) < 8 ? "center" : (lx > cx ? "left" : "right");
+    ctx.font = `600 13px ${FH}`; ctx.fillStyle = "#eef2f8"; ctx.fillText(d.k, lx, ly - 8);
+    ctx.font = `700 14px ${FH}`; ctx.fillStyle = gold; ctx.fillText(d.label, lx, ly + 8);
+  });
+  ctx.textAlign = "left";
+  y = cy + RS / 2 + 30; hr();
+
+  // —— 资金 / 运气 ——
+  const colW = (CW - 16) / 2;
+  const stat = (x, lab, val, unit, note) => {
+    ctx.fillStyle = "rgba(255,255,255,.04)"; rr(x, y, colW, 78, 12); ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,.08)"; ctx.lineWidth = 1; rr(x, y, colW, 78, 12); ctx.stroke();
+    ctx.font = `500 12px ${FB}`; ctx.fillStyle = "#8b97ad"; ctx.fillText(lab, x + 16, y + 13);
+    ctx.font = `800 24px ${FH}`; ctx.fillStyle = gold;
+    ctx.fillText(val, x + 16, y + 30);
+    const vw = ctx.measureText(val).width;
+    ctx.font = `600 12px ${FH}`; ctx.fillStyle = "#8b97ad"; ctx.fillText(unit, x + 16 + vw + 6, y + 40);
+    ctx.font = `400 11px ${FB}`; ctx.fillStyle = "#6b7894"; ctx.fillText(note, x + 16, y + 58);
+  };
+  stat(P, "资金", Math.round(rec.money).toLocaleString("en-US"), "G", "退役结余资金");
+  stat(P + colW + 16, "运气", String(Math.round(rec.luck)), "LUCK", "生涯落幕揭晓");
+  y += 78 + 26;
+
+  // —— 荣誉网格 ——
+  const totalChamp = rec.champ["夏"] + rec.champ["秋"] + rec.champ["IVS"] + rec.champ["深渊"];
+  const grid4 = (label, cells) => {
+    ctx.font = `600 13px ${FB}`; ctx.fillStyle = "#aab4c8"; ctx.fillText(label, P, y); y += 22;
+    const gap = 12, cw = (CW - gap * 3) / 4, ch = 70;
+    cells.forEach(([k, n], i) => {
+      const x = P + i * (cw + gap), hi = n > 0;
+      ctx.fillStyle = hi ? "rgba(245,207,106,.10)" : "rgba(255,255,255,.03)"; rr(x, y, cw, ch, 11); ctx.fill();
+      ctx.strokeStyle = hi ? "rgba(245,207,106,.45)" : "rgba(255,255,255,.07)"; ctx.lineWidth = 1; rr(x, y, cw, ch, 11); ctx.stroke();
+      ctx.textAlign = "center";
+      ctx.font = `800 26px ${FH}`; ctx.fillStyle = hi ? gold : "#5d6884"; ctx.fillText(String(n), x + cw / 2, y + 12);
+      ctx.font = `500 12px ${FB}`; ctx.fillStyle = hi ? "#cfd6e6" : "#6b7894"; ctx.fillText(k, x + cw / 2, y + 46);
+      ctx.textAlign = "left";
+    });
+    y += ch + 22;
+  };
+  grid4(`冠军 · 按赛事（共 ${totalChamp} 冠）`, [["夏季赛", rec.champ["夏"]], ["秋季赛", rec.champ["秋"]], ["洲际 IVS", rec.champ["IVS"]], ["深渊赛", rec.champ["深渊"]]]);
+  grid4("其他荣誉", [["亚军", rec.runnerups], ["季军", rec.thirds], ["FMVP", rec.fmvp_total], ["名场面", rec.spotlights.length]]);
+
+  // —— 已达成就（chips 自动换行）——
+  const allA = Object.keys(E.ACH_DESC).length;
+  ctx.font = `700 16px ${FH}`; ctx.fillStyle = "#eef2f8"; ctx.fillText("已达成就", P, y);
+  ctx.font = `500 12px ${FB}`; ctx.fillStyle = "#8b97ad"; ctx.textAlign = "right";
+  ctx.fillText(`本档解锁 ${rec.achs.length} / ${allA}`, LW - P, y + 3); ctx.textAlign = "left";
+  y += 30;
+  const chips = rec.achs.length ? rec.achs : ["本周目未解锁成就"];
+  let cxp = P, chRowH = 34;
+  chips.forEach((a) => {
+    ctx.font = `600 13px ${FB}`;
+    const tw = ctx.measureText(a).width, pad = 13, w = tw + pad * 2;
+    if (cxp + w > LW - P) { cxp = P; y += chRowH + 8; }
+    const tc = rec.achs.length ? (SHARE_TIER_COLOR[E.achTier(a)] || "#d6a06a") : "#8b97ad";
+    ctx.fillStyle = "rgba(255,255,255,.04)"; rr(cxp, y, w, chRowH, 17); ctx.fill();
+    ctx.strokeStyle = tc; ctx.globalAlpha = .5; ctx.lineWidth = 1; rr(cxp, y, w, chRowH, 17); ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.fillStyle = rec.achs.length ? tc : "#aab4c8"; ctx.fillText(a, cxp + pad, y + 9);
+    cxp += w + 8;
+  });
+  y += chRowH + 28;
+
+  // —— 页脚 + 二维码 ——
+  hr();
+  const qrS = 76;
+  if (qrImg) { ctx.drawImage(qrImg, LW - P - qrS, y, qrS, qrS); }
+  ctx.font = `600 14px ${FB}`; ctx.fillStyle = "#cfd6e6";
+  ctx.fillText("扫码体验 · IVL 模拟器", P, y + 6);
+  ctx.font = `400 12px ${FB}`; ctx.fillStyle = "#7c89a3";
+  ctx.fillText(`${rec.date} · #IVL模拟器 demo-v4.2`, P, y + 30);
+  ctx.font = `400 11px ${FB}`; ctx.fillStyle = "#5d6884";
+  ctx.fillText("长按图片保存到相册分享", P, y + 52);
+  y += qrS + 24;
+
+  // 按实际内容高度裁剪输出
+  const out = document.createElement("canvas");
+  out.width = LW * S; out.height = Math.round(y * S);
+  const octx = out.getContext("2d");
+  octx.drawImage(cv, 0, 0);
+  return out;
+}
+
+// 生成分享浮层：等字体就绪 → 出图 → 展示图片 + 下载按钮（手机长按保存）。
+let shareModalEl = null;
+function ensureShareModal() {
+  if (shareModalEl) return shareModalEl;
+  const m = document.createElement("div");
+  m.id = "shareModal"; m.className = "share-modal";
+  m.innerHTML = `<div class="share-sheet">
+    <div class="share-head"><div class="ttl">战报分享图</div><button class="share-x" aria-label="关闭">×</button></div>
+    <div class="share-imgwrap"><img class="share-img" alt="IVL 生涯战报分享图" /></div>
+    <p class="share-hint">长按图片保存到相册，或点下方按钮下载</p>
+    <div class="share-acts"><a class="share-dl" download="IVL生涯战报.png">下载图片</a></div>
+  </div>`;
+  document.body.appendChild(m);
+  shareModalEl = m;
+  return m;
+}
+async function shareWarCardImage(rec) {
+  // 等待页面 Web 字体就绪，避免 canvas 用 fallback 字体出图。
+  try { if (document.fonts && document.fonts.ready) { await document.fonts.ready; } } catch (e) { /* 字体 API 不可用则直接出图 */ }
+  let dataURL;
+  try {
+    const qr = await loadQrImage();
+    const canvas = renderShareCanvas(rec, qr);
+    dataURL = canvas.toDataURL("image/png");
   } catch (e) {
-    console.warn("复制到剪贴板失败，回退到手动复制：", e);
+    console.warn("生成分享图失败，回退到文案分享：", e);
+    await say("生成图片失败", `<p class="muted">当前环境无法生成图片，已为你准备可复制的战报文案：</p>
+      <pre class="warcard-text">${warCardText(rec).replace(/</g, "&lt;")}</pre>`, "返回结局");
+    return;
   }
-  await say("战报文案", `${ok ? `<p class="ok">已复制到剪贴板，去粘贴分享吧！</p>` : `<p class="muted">浏览器未授权剪贴板，请手动全选复制下方文案：</p>`}
-    <pre class="warcard-text">${txt.replace(/</g, "&lt;")}</pre>`, "返回结局");
+  await new Promise((resolve) => {
+    const m = ensureShareModal();
+    m.querySelector(".share-img").src = dataURL;
+    m.querySelector(".share-dl").href = dataURL;
+    const close = () => { m.classList.remove("show"); resolve(); };
+    m.querySelector(".share-x").onclick = close;
+    m.onclick = (e) => { if (e.target === m) close(); };
+    m.classList.add("show");
+  });
 }
 
 /* ----------------------- 全部结局与成就一览（v3.0） --------------------- *
@@ -2122,7 +2389,7 @@ async function boot() {
       <p class="muted">本作品为第五人格赛事粉丝二创，为爱发电非盈利。本作品中涉及的角色行为、故事情节均为作者虚构或出于创作需要进行加工，不涉及对现实人物或事件的影射或指控，请勿对号入座，请勿贴脸。</p>
       <p class="muted">请大家多玩第五人格，多看第五人格赛事。</p>
       <p class="muted">若有任何不妥之处或任何疑问，请 xhs 私信作者：9530174979</p>
-      <p class="declaim-em">比赛有输赢，人生没有。每一位为梦想奋斗的人都值得尊重。</p>`,
+      <p class="muted">比赛有输赢，人生没有。每一位为梦想奋斗的人都值得尊重。</p>`,
     choices: hasLast
       ? [{ label: "创建角色", cls: "primary" }, { label: "📜 查看上局生涯战报", cls: "ghost" }]
       : [{ label: "创建角色", cls: "primary" }],
@@ -2167,6 +2434,7 @@ function dismissSplash() {
 async function startFromSplash() {
   if (gameStarted) return;
   gameStarted = true;
+  track("game_started");   // 漏斗①：点击「开始生涯」
   dismissSplash();
   gameLoop();
 }

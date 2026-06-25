@@ -2,13 +2,20 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>IVL 模拟器 · 可玩切片 demo-v4.1（策划 v7.1 / 数值 v6.1 / 文案 v2.1）</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>IVL 模拟器 · 可玩切片 demo-v4.2（策划 v7.1 / 数值 v6.1 / 文案 v2.1）</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Chakra+Petch:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;600;700;900&display=swap" />
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="chargen.css" />
+  <!-- 访问统计：GoatCounter（免费 / 轻量 / 无 cookie，GitHub Pages 无内置统计需自行接入）。
+       使用步骤：到 https://www.goatcounter.com/ 注册一个免费站点（如 erinlyv-ivl），
+       再把下方 data-goatcounter 的 YOURNAME 换成你的子域名即可。后台可看访问量 + 自定义事件
+       （game_started / character_created / first_match / ending_reached 漏斗，见 game.js 的 track()）。
+       注：占位符 YOURNAME 未替换前不会产生有效统计，但也不会报错或影响游戏。 -->
+  <script data-goatcounter="https://YOURNAME.goatcounter.com/count"
+          async src="//gc.zgo.at/count.js"></script>
   <!-- v4.0 启动页（取自 UI设计/demo9-启动页A-电影首帧.html），样式统一作用域到 #splash 以免与正文样式冲突 -->
   <style>
     #splash { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; text-align: center;
@@ -108,7 +115,7 @@
         </button>
       </div>
     </div>
-    <div class="ver">IVL SIMULATOR · v4.1</div>
+    <div class="ver">IVL SIMULATOR · v4.2</div>
   </div>
 
   <div class="app">
@@ -120,7 +127,7 @@
           <div class="ey">PRO PLAYER · CAREER DOSSIER</div>
         </div>
       </div>
-      <div class="tagline">第五人格 · 职业电竞选手生涯模拟 · 可玩垂直切片 demo-v4.1</div>
+      <div class="tagline">第五人格 · 职业电竞选手生涯模拟 · 可玩垂直切片 demo-v4.2</div>
     </header>
 
     <div class="layout">
