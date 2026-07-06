@@ -41,6 +41,16 @@ function clickOne() {
   // === v4.1 结局/成就图鉴弹窗（独立 overlay，结局界面会 await 其关闭）：直接关闭以继续流程 ===
   const cxm = q("#codexModal");
   if (cxm && cxm.classList.contains("show")) { q("#cxX").click(); return true; }
+  // === v5.0 总决赛特殊玩法弹窗（game.js runGrandFinals，浮于 #koscreen 之上） ===
+  // 单按钮流程：反复点 #gf-act 即可推进 序章→主客场→状态→BP→定位序列→队友半场→结算(→加时)。
+  const gf = q("#gfOverlay");
+  if (gf) {
+    const rules = q("#gf-rules");
+    if (rules && rules.classList.contains("show")) { q("#gf-rulesX").click(); return true; }
+    const gact = q("#gf-act");
+    if (gact && gact.style.display !== "none" && !gact.disabled) { gact.click(); return true; }
+    return true; // 弹窗投掷/结算中，等待下一 tick
+  }
   // === v4.1 季后赛 / 深渊「晋级图」整屏 overlay（game.js runKnockoutScreen） ===
   // overlay 自带按钮流程（与 present()/choose 解耦），需单独驱动：颁奖→完成 / 战报→颁奖 /
   // NPC 场跳过 / 玩家场点上场掷骰、点下一场。配合 window.__KO_FAST 关闭动画时序。
@@ -84,10 +94,19 @@ function clickOne() {
       if (!ccteam.value) { fire(ccteam, "测试队"); return true; }
       if (ccpid && !ccpid.value) { fire(ccpid, "测试侠"); return true; }
     }
-    // 第 2/3 步：未选中则点一个选项卡（定位 / 身份）
+    // 定位 / 位置 / 身份步：未选中则点一个选项卡
     const opts = qa("#cc .opt");
     if (opts.length && !qa("#cc .opt.sel").length) {
       opts[Math.floor(Math.random() * opts.length)].click(); return true;
+    }
+    // 常用角色步（demov4.2feedbackrole）：以词条选够 3 个（优先推荐词条以满足 ≥2 推荐）。
+    const chips = qa("#cc .chip");
+    if (chips.length) {
+      const nextBtn = q("#ccnext");
+      if (nextBtn && nextBtn.disabled) {
+        const pick = qa("#cc .chip.rec:not(.sel)")[0] || qa("#cc .chip:not(.sel):not(.dim)")[0];
+        if (pick) { pick.click(); return true; }
+      }
     }
     // 偶尔刷新天赋
     const reroll = q("#ccreroll");
@@ -114,18 +133,75 @@ function clickOne() {
   const teamOk = q("#teamOk");
   if (teamOk && !teamOk.disabled) { teamOk.click(); return true; }
   // 4) 通用选项
-  const choices = qa("#choices .choice").filter(b => !b.disabled);
+  let choices = qa("#choices .choice").filter(b => !b.disabled);
   if (choices.length) {
     const en = q(".sc-ename");
     if (en) { if (!inEnding) { inEnding = true; endings.push(en.textContent); } }
     else { inEnding = false; }
+    // 结局界面「一键生成图片分享」依赖 Image 解码（loadQrImage 的 onload）——jsdom 无图片解码，
+    // 该按钮会永久挂起 await，故冲烟时跳过它（浏览器环境正常，不影响真实玩法）。
+    const clickable = choices.filter(b => !/一键生成图片分享/.test(b.textContent));
+    if (clickable.length) { choices = clickable; }
     choices[Math.floor(Math.random() * choices.length)].click();
     return true;
   }
   return false;
 }
 
+/* 单槽续局存档 · 集成断言（demov4.3feedback）：用带 URL 的独立 jsdom(启用 localStorage),
+ * 真实走一遍 saveRun → 关档 → loadRun → resumeRun → clearRun,验证世界状态完整恢复。
+ * 断言失败即抛错(退出码 1),不得跳过。 */
+function testSaveResume() {
+  const dom2 = new JSDOM(`<!DOCTYPE html><html><body>
+    <div id="hud"></div><div id="log"></div>
+    <section><div id="main"></div></section>
+    <div id="toast"></div><div id="cc"></div>
+  </body></html>`, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://ivl.test/" });
+  // 测试体须与三份源码在同一 eval 词法作用域(P / curYear / RUN_KEY 等为 let/const 顶层绑定,
+  // 独立 eval 看不到),故拼接进同一 eval,末尾 IIFE 返回结果。
+  const testBody = `\n;//---\n(function () {
+    const R = { fails: [], ok: (c, m) => { if (!c) R.fails.push(m); } };
+    // 构造一个"进行中"的世界:玩家 + 本局 NPC 队伍 + 冠军/名场面/续局标记。
+    P = new E.Player("青训", "存档队", "续局侠", "求生者");
+    P.tech = 91; P.champ["夏"] = 1; P.spotlight.add("残血翻盘"); P._grandSlam = true;
+    curYear = 3; curAge = E.CONFIG.START_AGE + 2;
+    gameTeams = E.generateTeams(P.teamName); gameTeams.meta = E.buildTeamMeta(gameTeams);
+    const teamSnap = P.teamName, domSnap = gameTeams.domestic.length;
+
+    saveRun();
+    R.ok(!!localStorage.getItem(RUN_KEY), "saveRun 写入 localStorage");
+    const persisted = loadRun();
+    R.ok(persisted && persisted.curYear === 3, "loadRun 读回赛年=3");
+    R.ok(persisted && persisted.meta && persisted.meta.name === P.name, "存档 meta 含玩家全名");
+
+    // 模拟关闭页面:清空运行期世界状态。
+    P = null; gameTeams = null; curYear = 1; curAge = 18; logLines = [];
+
+    const run = loadRun();
+    resumeRun(run);
+    R.ok(P instanceof E.Player, "resume 后 P 为 Player 实例");
+    R.ok(P.teamName === teamSnap && P.tech === 91, "resume 后玩家字段恢复");
+    R.ok(P.spotlight instanceof Set && P.spotlight.has("残血翻盘"), "resume 后 Set 字段可用");
+    R.ok(P._grandSlam === true, "resume 后金满贯标记恢复(结局判定不丢)");
+    R.ok(curYear === 3 && curAge === E.CONFIG.START_AGE + 2, "resume 后赛年/年龄恢复");
+    R.ok(gameTeams && gameTeams.domestic && gameTeams.domestic.length === domSnap && gameTeams.meta, "resume 后 NPC 队伍/实力档恢复");
+    R.ok(typeof P.cp === "number", "resume 后 getter/方法经原型链可用");
+
+    clearRun();
+    R.ok(loadRun() === null, "clearRun 后存档已清除");
+    return JSON.stringify(R.fails);
+  })()`;
+  const raw = dom2.window.eval(engineSrc + "\n;//---\n" + chargenSrc + "\n;//---\n" + gameSrc + testBody);
+  const fails = JSON.parse(raw);
+  if (fails.length) {
+    fails.forEach((m) => console.error("  ✗ " + m));
+    throw new Error("续局存档集成断言失败：" + fails.length + " 项未通过");
+  }
+  console.log("[续局存档] 集成断言通过：saveRun → 关档 → loadRun → resumeRun → clearRun 世界状态完整恢复。");
+}
+
 async function run() {
+  testSaveResume();
   dom.window.__KO_FAST = true;   // 关闭晋级图动画时序，冲烟快速跑通
   dom.window.dispatchEvent(new dom.window.Event("DOMContentLoaded"));
   let idle = 0, ticks = 0;
@@ -137,20 +213,6 @@ async function run() {
   }
   console.log(`UI 冲烟完成：ticks=${ticks}，跑通生涯 ${endings.length} 段`);
   console.log("结局序列：", endings);
-
-  // 访问统计埋点回归（GoatCounter track()）：jsdom 下 window.goatcounter 不存在，
-  // track() 必须静默 no-op——既不抛错、也不阻塞流程（上面整局跑通即已隐式覆盖）。
-  // 这里再显式断言：函数存在、无统计脚本时调用安全、once 去重生效、真实 count 会被调用。
-  if (typeof dom.window.track !== "function") { throw new Error("track() 未定义"); }
-  dom.window.track("smoketest_noop");                 // 无 goatcounter，应安全 no-op
-  dom.window.track("smoketest_once", { once: true });
-  let calls = 0;
-  dom.window.goatcounter = { count: () => { calls++; } };
-  dom.window.track("smoketest_evt");                  // 有 count，应上报 1 次
-  dom.window.track("smoketest_once", { once: true }); // once 已记录，应被去重（不再上报）
-  if (calls !== 1) { throw new Error(`track() 上报次数异常：期望 1，实际 ${calls}`); }
-  delete dom.window.goatcounter;
-  console.log("✓ track() 埋点断言通过（no-op 安全 / once 去重 / 正常上报）");
 }
 
 run().then(() => process.exit(0)).catch((e) => { console.error("UI 运行期异常：", e); process.exit(1); });

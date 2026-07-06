@@ -73,6 +73,25 @@
 #cc .opt.sel { border-color: var(--gold); background: linear-gradient(180deg, var(--gold-soft), transparent); }
 #cc .opt.sel .check { border-color: var(--gold); background: var(--gold); color: #1a1205; }
 
+/* 常用角色词条选择（demov4.2feedbackrole） */
+#cc .rolepick { display: block; }
+#cc .rp-counter { font-family: 'Sora', sans-serif; font-size: 13px; color: var(--muted); margin-bottom: 18px; }
+#cc .rp-counter b { color: var(--gold2); font-size: 15px; margin: 0 2px; }
+#cc .rp-counter b.good { color: var(--ok); }
+#cc .rp-group + .rp-group { margin-top: 20px; }
+#cc .rp-glabel { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--fg); margin-bottom: 12px; }
+#cc .rp-glabel em { color: var(--dim); font-style: normal; font-weight: 400; font-size: 12.5px; }
+#cc .rp-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--line2); flex: 0 0 auto; }
+#cc .rp-dot.rec { background: linear-gradient(150deg, var(--gold), #b8861f); box-shadow: 0 0 0 3px var(--gold-soft); }
+#cc .chips { display: flex; flex-wrap: wrap; gap: 9px; }
+#cc .chip { cursor: pointer; font-family: 'Noto Sans SC', sans-serif; font-size: 13.5px; line-height: 1; color: var(--muted); background: var(--bg); border: 1.5px solid var(--line2); border-radius: 999px; padding: 9px 15px; transition: .16s; }
+#cc .chip:hover { border-color: var(--gold2); color: var(--fg); transform: translateY(-1px); }
+#cc .chip.rec { border-style: dashed; border-color: rgba(226, 181, 62, .4); color: var(--gold2); }
+#cc .chip.sel { border-style: solid; border-color: var(--gold); background: linear-gradient(180deg, var(--gold-soft), transparent); color: var(--fg); font-weight: 600; box-shadow: 0 4px 14px rgba(226, 181, 62, .2); }
+#cc .chip.sel::before { content: "✓ "; color: var(--gold2); font-weight: 700; }
+#cc .chip.dim { opacity: .38; cursor: not-allowed; }
+#cc .chip.dim:hover { transform: none; border-color: var(--line2); color: var(--muted); }
+
 /* 属性 */
 #cc .attrtop { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 #cc .btn { cursor: pointer; border: none; font-family: 'Noto Sans SC', sans-serif; font-weight: 600; border-radius: 12px; transition: .18s; font-size: 14px; }

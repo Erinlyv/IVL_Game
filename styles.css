@@ -93,6 +93,15 @@ body {
 .pmeta { font-size: 12px; color: var(--muted); margin-top: 1px; }
 .pstage { font-size: 12px; color: var(--gold); margin-top: 2px; }
 
+/* 常用角色（demov4.2feedbackrole·角色创建）：训练界面左侧栏「人物设定」下方纯文本展示，不高亮 */
+.commonroles { margin: 0 0 15px; font-size: 12.5px; color: var(--fg); line-height: 1.6; }
+.commonroles .cr-lab { color: var(--muted); }
+/* 季后赛 / 深渊淘汰赛属性栏内的常用角色（demov4.2feedbackrole）：词条高亮呈现 */
+.commonroles.in-attr { margin: 12px 0 0; padding: 11px 13px; background: rgba(226, 181, 62, .06); border: 1px solid var(--line); border-radius: 12px; font-size: inherit; color: inherit; }
+.commonroles.in-attr .cr-lab { display: block; font-size: 11px; color: var(--muted); letter-spacing: .4px; margin-bottom: 8px; }
+.commonroles.in-attr .cr-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.commonroles.in-attr .cr-chip { font-size: 11.5px; line-height: 1; color: var(--gold2); background: var(--gold-soft); border: 1px solid rgba(226, 181, 62, .28); border-radius: 999px; padding: 5px 10px; white-space: nowrap; }
+
 .stamina { margin-bottom: 13px; }
 .stat-top { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
 .stat-top b { color: var(--fg); font-family: "Sora", sans-serif; font-variant-numeric: tabular-nums; }
@@ -120,6 +129,39 @@ body {
 }
 .db.buff { background: rgba(74, 222, 128, .14); color: var(--ok); border-color: rgba(74, 222, 128, .32); }
 .db.rest { background: rgba(196, 163, 240, .15); color: var(--lav); border-color: rgba(196, 163, 240, .34); }
+/* demov4.2feedback《宠物》：左侧栏宠物 tag（中性色，非 debuff） */
+.db.pet { background: rgba(110, 168, 254, .14); color: var(--blue, #6ea8fe); border-color: rgba(110, 168, 254, .32); }
+
+/* demov4.3feedback《名场面》：改为比赛中弹窗呈现（不再进季后赛战报），卡片样式沿用金色高光 */
+.spot-card { padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(245, 207, 106, .34);
+  background: linear-gradient(135deg, rgba(245, 207, 106, .12), rgba(226, 181, 62, .05)); text-align: left; }
+.spot-card .spot-x { font-size: 13px; color: #e6ebf5; line-height: 1.7; }
+.spot-card .spot-r { margin-top: 8px; font-size: 12px; color: #f5cf6a; font-weight: 600; }
+
+/* demov4.3feedback《初始页面》：作者声明落款——右下角，名字黄色加粗，xhs 号右对齐换行 */
+.author-sign { margin-top: 16px; text-align: right; }
+.author-sign .author-name { color: #f5cf6a; font-weight: 700; font-size: 16px; }
+.author-sign .author-xhs { margin-top: 3px; font-size: 12px; color: #9fb0c8; }
+
+/* demov4.3feedback《赛年结算》：六维图 + 本年成长明细面板 */
+.ys-wrap { display: grid; grid-template-columns: minmax(240px, 320px) 1fr; gap: 18px; align-items: start; }
+.ys-sechead { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.ys-sechead .bar { width: 4px; height: 15px; border-radius: 2px; background: #f5cf6a; }
+.ys-sechead h3 { margin: 0; font-size: 14px; font-weight: 700; color: #eef2f8; }
+.ys-radarbox { display: grid; place-items: center; }
+.ys-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.ys-stat, .ys-team { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 10px;
+  background: rgba(255, 255, 255, .04); border: 1px solid var(--line2, rgba(255, 255, 255, .08)); }
+.ys-team { margin-top: 10px; background: rgba(245, 207, 106, .08); border-color: rgba(245, 207, 106, .28); }
+.ys-k { font-size: 12px; color: #9fb0c8; min-width: 42px; }
+.ys-v { font-size: 15px; font-weight: 700; color: #eef2f8; font-family: 'Sora', sans-serif; margin-left: auto; }
+.ys-d { font-size: 12px; font-weight: 700; padding: 1px 7px; border-radius: 20px; min-width: 40px; text-align: center; }
+.ys-d.up { color: #4ade80; background: rgba(74, 222, 128, .14); }
+.ys-d.down { color: #f47272; background: rgba(244, 114, 114, .14); }
+.ys-d.flat { color: #7c8aa5; background: rgba(255, 255, 255, .05); }
+.ys-honors { margin-top: 12px; font-size: 12.5px; color: #c4cde0; line-height: 1.7; }
+.ys-honors b { color: #f5cf6a; }
+@media (max-width: 640px) { .ys-wrap { grid-template-columns: 1fr; } }
 
 /* ---- HUD 背包：改为按钮，点开弹窗（demov4.0feedback·背包改良） ---- */
 .inv { border-top: 1px dashed var(--line2); padding-top: 11px; }
@@ -631,6 +673,11 @@ body {
 .achpop.t-silver .ap-head { color: #dde4ee; }
 .achpop.t-bronze { border-color: #d39b6a; background: linear-gradient(135deg, #2a2018, #18120d); }
 .achpop.t-bronze .ap-head { color: #e0ae80; }
+/* demov4.3feedback《成就》：老大成就弹窗——独特绿色 */
+.achpop.t-boss   { border-color: #4ade80; background: linear-gradient(135deg, #12291b, #0d1a12);
+  box-shadow: 0 12px 34px rgba(74, 222, 128, .28); }
+.achpop.t-boss   .ap-head { color: #4ade80; }
+.achpop.t-boss   .ap-name { color: #d6ffe4; }
 
 /* ---------------------- v4.0 结局分级字体 / 特效 ---------------------- */
 .wc-ending-tier { font-size: 11px; letter-spacing: 2px; margin-bottom: 8px; opacity: .9; }
@@ -1396,6 +1443,9 @@ body.settle-mode .choice{ text-align:center; align-items:center; min-width:260px
 .sc-ach .chip.on.t-plat{ background:linear-gradient(135deg,#bff0ff,#7fd0ef); border-color:#8fe3ff; color:#073a4a }
 .sc-ach .chip.on.t-silver{ background:linear-gradient(135deg,#e8eef7,#c2ccdb); border-color:#cdd6e3; color:#2a3342 }
 .sc-ach .chip.on.t-bronze{ background:linear-gradient(135deg,#e7c39e,#cf9a63); border-color:#d39b6a; color:#3d2710 }
+/* demov4.3feedback《成就》：老大成就战报卡 tag——独特绿色 */
+.sc-ach .chip.on.t-boss{ background:linear-gradient(135deg,#5ee88f,#37c46a); border-color:#4ade80; color:#08361b }
+.sc-ach .chip.on.t-boss .d{ color:#0b4a26 }
 .sc-foot{ display:flex; align-items:center; gap:14px; padding:18px 26px 22px; flex-wrap:wrap }
 .sc-foot .tip{ flex:1; color:var(--dim); font-size:12.5px }
 .sc-foot .sc-date{ color:var(--dim); font-size:11.5px }
@@ -1508,3 +1558,150 @@ body.settle-mode .choice{ text-align:center; align-items:center; min-width:260px
   /* —— toast 居中避开底部安全区 —— */
   .toast { bottom: calc(20px + env(safe-area-inset-bottom)); }
 }
+
+/* =============================================================================
+ * 总决赛特殊玩法 · 弹窗（demo-v5.0）
+ * 对齐 数值设计/总决赛特殊玩法.md + feedbacks/demofeedback/demov4.4feedback.md
+ *   + UI设计/demo12-深渊总决赛-求生者.html。整屏 overlay 承载中型弹窗，
+ *   全部作用域到 #gfOverlay 以免与正文 / #koscreen 样式冲突。
+ *   获胜界面 / FMVP 界面仍沿用 #koscreen 的颁奖弹窗，本文件不含颁奖样式。
+ * ===========================================================================*/
+#gfOverlay{
+  --gf-hunter:#e85d9a; --gf-surv:#5bd6c0; --gf-surv-soft:rgba(91,214,192,.15);
+  --gf-gold-soft:rgba(226,181,62,.13);
+  /* 必须高于 #koscreen(z-index:1200)——本弹窗浮于季后赛/深渊「晋级图」整屏 overlay 之上，
+     否则会被晋级图挡住，表现为点「进入冠亚决赛」后卡在「投掷中…」而弹窗不可见。 */
+  position:fixed; inset:0; z-index:2000; display:grid; place-items:center; padding:22px;
+  background:rgba(5,7,13,.72); backdrop-filter:blur(5px);
+  font-family:'Noto Sans SC',-apple-system,'PingFang SC',sans-serif; color:var(--fg);
+}
+#gfOverlay.hide{ display:none }
+#gfOverlay .mono{ font-family:'Chakra Petch','Sora',sans-serif }
+#gfOverlay .pop{ width:min(560px,96vw); max-height:92dvh; display:flex; flex-direction:column; border-radius:22px;
+  border:1px solid var(--line2); overflow:hidden; position:relative;
+  background:linear-gradient(180deg,var(--surface),var(--bg2)); box-shadow:0 40px 90px rgba(0,0,0,.65);
+  animation:gfpop .32s cubic-bezier(.16,1,.3,1) }
+@keyframes gfpop{ from{opacity:0;transform:scale(.95) translateY(14px)} to{opacity:1;transform:none} }
+#gfOverlay .pop-head{ display:flex; align-items:center; gap:12px; padding:16px 18px 12px; border-bottom:1px solid var(--line);
+  background:linear-gradient(90deg,rgba(226,181,62,.10),transparent) }
+#gfOverlay .pop-head .step{ font-family:'Chakra Petch'; font-weight:700; font-size:17px; letter-spacing:.5px; color:#0c1018;
+  background:linear-gradient(135deg,var(--gold2),var(--gold)); min-width:30px; text-align:center; padding:4px 11px; border-radius:9px; flex:none }
+#gfOverlay .pop-head .htxt{ min-width:0 }
+#gfOverlay .pop-head .ey{ font-family:'Chakra Petch'; letter-spacing:3px; font-size:10px; color:var(--gold2) }
+#gfOverlay .pop-head .ttl{ font-family:'Sora'; font-weight:700; font-size:16px; margin-top:2px; line-height:1.2 }
+#gfOverlay .pop-head .spacer{ flex:1 }
+#gfOverlay .pop-head .help{ width:32px; height:32px; border-radius:10px; border:1px solid var(--line2); background:var(--surface2);
+  color:var(--gold2); cursor:pointer; font-family:'Sora'; font-weight:800; font-size:15px; flex:none; transition:.18s }
+#gfOverlay .pop-head .help:hover{ border-color:var(--gold2); transform:translateY(-1px) }
+#gfOverlay .scorebar{ display:none; align-items:stretch; gap:1px; margin:0; background:var(--line) }
+#gfOverlay .scorebar.show{ display:flex }
+#gfOverlay .scorebar .sc{ flex:1; padding:8px 12px; background:var(--bg2); display:flex; align-items:center; gap:8px }
+#gfOverlay .scorebar .sc .lab{ font-size:11px; color:var(--muted) }
+#gfOverlay .scorebar .sc .val{ margin-left:auto; font-family:'Chakra Petch'; font-weight:700; font-size:20px }
+#gfOverlay .scorebar .sc.you .lab{ color:var(--gf-surv) } #gfOverlay .scorebar .sc.you .val{ color:var(--gf-surv) }
+#gfOverlay .scorebar .sc.opp{ justify-content:flex-end } #gfOverlay .scorebar .sc.opp .val{ margin-left:0; margin-right:auto }
+#gfOverlay .pop-body{ padding:16px 18px 6px; overflow-y:auto; flex:1; min-height:0 }
+#gfOverlay .narr{ font-size:14.5px; line-height:1.85; color:var(--fg) }
+#gfOverlay .narr .prompt{ color:var(--muted); font-size:13.5px; margin-top:8px }
+#gfOverlay .narr.big{ font-size:16px; text-align:center; padding:14px 6px }
+#gfOverlay .rollzone{ margin-top:16px; border:1px solid var(--line2); border-radius:16px; padding:14px 15px;
+  background:radial-gradient(circle at 50% -10%,rgba(226,181,62,.10),transparent 70%),var(--surface); display:none }
+#gfOverlay .rollzone.show{ display:block; animation:gfrise .35s cubic-bezier(.16,1,.3,1) both }
+@keyframes gfrise{ from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
+#gfOverlay .rz-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px }
+#gfOverlay .rz-lab{ font-family:'Chakra Petch'; letter-spacing:2px; font-size:10.5px; color:var(--dim) }
+#gfOverlay .rz-thr{ font-family:'Chakra Petch'; font-size:12px; color:var(--muted) }
+#gfOverlay .rz-thr b{ color:var(--gold2); font-size:14px }
+#gfOverlay .dtiles{ display:flex; align-items:center; justify-content:center; gap:14px; margin:4px 0 6px }
+#gfOverlay .d120{ width:84px; height:84px; border-radius:18px; flex:none; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:linear-gradient(150deg,#1f2c46,#131c30); border:1px solid var(--line2); position:relative;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 8px 22px rgba(0,0,0,.5); transition:.25s }
+#gfOverlay .d120 .dv{ font-family:'Chakra Petch'; font-weight:700; font-size:38px; line-height:1; color:var(--fg) }
+#gfOverlay .d120 .dm{ font-family:'Chakra Petch'; font-size:9px; letter-spacing:2px; color:var(--dim); margin-top:4px }
+#gfOverlay .d120.rolling{ animation:gfspin .5s linear infinite }
+@keyframes gfspin{ 0%{transform:translateY(0)} 50%{transform:translateY(-3px) scale(1.03)} 100%{transform:translateY(0)} }
+#gfOverlay .d120.settle{ animation:gfsettle .45s cubic-bezier(.2,1.5,.4,1) }
+@keyframes gfsettle{ 0%{transform:scale(1.22)} 60%{transform:scale(.96)} 100%{transform:scale(1)} }
+#gfOverlay .d120.dropped{ opacity:.34; filter:grayscale(.5) }
+#gfOverlay .d120.dropped::after{ content:""; position:absolute; left:12%; right:12%; top:50%; height:3px; border-radius:2px;
+  background:var(--danger,#ef4444); transform:rotate(-12deg) }
+#gfOverlay .d120.chosen{ border-color:var(--gold2); box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 0 0 1px var(--gold2),0 8px 26px rgba(245,207,106,.3) }
+#gfOverlay .d120.crit{ border-color:var(--ok); box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 0 0 1px var(--ok),0 8px 26px rgba(74,222,128,.35) }
+#gfOverlay .d120.crit .dv{ color:var(--ok) }
+#gfOverlay .d120.fumble{ border-color:var(--danger,#ef4444) } #gfOverlay .d120.fumble .dv{ color:#ff9d9d }
+#gfOverlay .d120.mini{ width:62px; height:62px; border-radius:13px } #gfOverlay .d120.mini .dv{ font-size:24px } #gfOverlay .d120.mini .dm{ font-size:8px }
+#gfOverlay .dieconn{ font-family:'Chakra Petch'; font-size:11px; color:var(--dim); letter-spacing:1px }
+#gfOverlay .mainpt{ margin:10px auto 2px; width:134px; height:110px; border-radius:20px; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:linear-gradient(150deg,#1f2c46,#131c30); border:1px solid var(--line2); position:relative;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 10px 26px rgba(0,0,0,.5); transition:.25s }
+#gfOverlay .mainpt .mv{ font-family:'Chakra Petch'; font-weight:700; font-size:56px; line-height:1; color:var(--fg) }
+#gfOverlay .mainpt .mvlab{ font-family:'Chakra Petch'; font-size:9px; letter-spacing:2px; color:var(--dim); margin-top:5px }
+#gfOverlay .mainpt.rolling{ animation:gfspin .5s linear infinite }
+#gfOverlay .mainpt.bump{ animation:gfbump .34s ease }
+@keyframes gfbump{ 0%{transform:scale(1)} 42%{transform:scale(1.13)} 100%{transform:scale(1)} }
+#gfOverlay .mainpt.crit{ border-color:var(--ok); box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 0 0 1px var(--ok),0 10px 26px rgba(74,222,128,.35) }
+#gfOverlay .mainpt.crit .mv{ color:var(--ok) }
+#gfOverlay .mainpt.fumble{ border-color:var(--danger,#ef4444) } #gfOverlay .mainpt.fumble .mv{ color:#ff9d9d }
+#gfOverlay .stepline{ display:flex; flex-wrap:wrap; gap:6px; justify-content:center; margin-top:9px; min-height:18px }
+#gfOverlay .stepchip{ font-family:'Chakra Petch'; font-size:11px; padding:3px 9px; border-radius:14px; border:1px solid var(--line2); color:var(--muted);
+  animation:gfrise .3s cubic-bezier(.16,1,.3,1) both }
+#gfOverlay .stepchip.pos{ color:var(--ok); border-color:rgba(74,222,128,.3); background:rgba(74,222,128,.08) }
+#gfOverlay .stepchip.neg{ color:#ff9d9d; border-color:rgba(239,68,68,.3); background:rgba(239,68,68,.08) }
+#gfOverlay .coinres{ display:inline-block; font-family:'Sora'; font-weight:800; font-size:16px; padding:7px 15px; border-radius:11px; margin-top:8px }
+#gfOverlay .coinres.win{ color:var(--gf-surv); background:var(--gf-surv-soft); border:1px solid var(--gf-surv) }
+#gfOverlay .coinres.lose{ color:#ff9d9d; background:rgba(239,68,68,.14); border:1px solid rgba(239,68,68,.45) }
+#gfOverlay .tierbadge{ display:flex; align-items:center; justify-content:center; gap:8px; margin-top:6px }
+#gfOverlay .tierbadge .tg{ font-size:13px; font-weight:700; padding:4px 14px; border-radius:20px }
+#gfOverlay .tier-bad{ color:#ff9d9d; background:rgba(239,68,68,.14); border:1px solid rgba(239,68,68,.3) }
+#gfOverlay .tier-mid{ color:var(--gold2); background:var(--gf-gold-soft); border:1px solid rgba(226,181,62,.3) }
+#gfOverlay .tier-good{ color:var(--ok); background:rgba(74,222,128,.13); border:1px solid rgba(74,222,128,.3) }
+#gfOverlay .rz-detail{ font-size:11.5px; color:var(--dim); text-align:center; margin-top:8px; font-family:'Chakra Petch'; line-height:1.6 }
+#gfOverlay .outcome{ margin-top:14px; border-radius:14px; padding:13px 14px; border:1px solid var(--line2);
+  background:linear-gradient(180deg,var(--surface2),var(--surface)); display:none }
+#gfOverlay .outcome.show{ display:block; animation:gfrise .35s cubic-bezier(.16,1,.3,1) both }
+#gfOverlay .outcome .oh{ display:flex; align-items:center; gap:8px; margin-bottom:7px }
+#gfOverlay .outcome .oh .bar{ width:4px; height:15px; border-radius:3px }
+#gfOverlay .outcome .oh b{ font-family:'Sora'; font-size:13.5px }
+/* demov5.0feedback：把比赛场景的结果文案（作者手写叙事）highlight 得更明显——提亮字色、加大字号字重。 */
+#gfOverlay .outcome .otxt{ font-size:15px; color:var(--fg); line-height:1.8; font-weight:500 }
+#gfOverlay .outcome .oscore{ margin-top:9px; font-family:'Chakra Petch'; font-weight:700; font-size:13px }
+#gfOverlay .outcome.good .oh .bar{ background:var(--ok) } #gfOverlay .outcome.good .oscore{ color:var(--ok) }
+#gfOverlay .outcome.bad .oh .bar{ background:var(--danger,#ef4444) } #gfOverlay .outcome.bad .oscore{ color:#ff9d9d }
+#gfOverlay .outcome.mid .oh .bar{ background:var(--gold) } #gfOverlay .outcome.mid .oscore{ color:var(--gold2) }
+#gfOverlay .buffs{ margin-top:14px; border-top:1px solid var(--line); padding-top:12px }
+#gfOverlay .buffgrp{ margin-bottom:8px }
+#gfOverlay .buffgrp .bl{ font-family:'Chakra Petch'; letter-spacing:2px; font-size:9.5px; color:var(--dim); margin-bottom:6px }
+#gfOverlay .chips{ display:flex; flex-wrap:wrap; gap:7px }
+#gfOverlay .chip{ display:inline-flex; align-items:center; gap:6px; padding:5px 11px; border-radius:20px; font-size:12px; font-weight:600;
+  border:1px solid var(--line2); background:var(--surface2); color:var(--muted) }
+#gfOverlay .chip.pos{ border-color:rgba(74,222,128,.3); background:rgba(74,222,128,.1); color:var(--ok) }
+#gfOverlay .chip.neg{ border-color:rgba(239,68,68,.3); background:rgba(239,68,68,.1); color:#ff9d9d }
+#gfOverlay .chip.home{ border-color:var(--gf-gold-soft); background:var(--gf-gold-soft); color:var(--gold2) }
+#gfOverlay .chip .ic{ font-size:13px } #gfOverlay .chip.empty{ color:var(--dim); border-style:dashed; background:transparent }
+#gfOverlay .pop-foot{ padding:12px 18px 16px; border-top:1px solid var(--line); background:rgba(11,17,32,.6) }
+#gfOverlay .gfbtn{ width:100%; border:none; cursor:pointer; font-family:'Sora'; font-weight:700; font-size:16px; letter-spacing:.5px;
+  padding:15px; border-radius:14px; color:#1a1205; transition:.2s; display:flex; align-items:center; justify-content:center; gap:9px;
+  background:linear-gradient(135deg,var(--gold2),var(--gold)); box-shadow:0 12px 30px rgba(226,181,62,.32) }
+#gfOverlay .gfbtn:hover{ filter:brightness(1.06); transform:translateY(-2px) }
+#gfOverlay .gfbtn:active{ transform:translateY(0) }
+#gfOverlay .gfbtn:disabled{ opacity:.5; cursor:not-allowed; transform:none; box-shadow:none }
+#gfOverlay .gfbtn.surv{ background:linear-gradient(135deg,var(--gf-surv),#33b6a0); color:#04201b; box-shadow:0 12px 30px rgba(91,214,192,.3) }
+#gfOverlay .hint{ text-align:center; font-size:11.5px; color:var(--dim); margin-top:9px; line-height:1.5 }
+/* 玩法说明弹窗 */
+#gfOverlay .rules{ position:fixed; inset:0; z-index:20; display:none; place-items:center; padding:24px; background:rgba(5,7,13,.78); backdrop-filter:blur(6px) }
+#gfOverlay .rules.show{ display:grid }
+#gfOverlay .rules .sheet{ width:min(460px,94vw); max-height:88dvh; overflow:auto; border-radius:20px; border:1px solid var(--line2);
+  background:linear-gradient(180deg,var(--surface),var(--bg2)); box-shadow:0 40px 80px rgba(0,0,0,.6); animation:gfpop .3s cubic-bezier(.16,1,.3,1) }
+#gfOverlay .rules .rh{ display:flex; align-items:center; gap:10px; padding:18px 20px 12px }
+#gfOverlay .rules .rh .ey{ font-family:'Chakra Petch'; letter-spacing:3px; font-size:10px; color:var(--gold2) }
+#gfOverlay .rules .rh .ttl{ font-family:'Sora'; font-weight:700; font-size:18px; margin-top:2px }
+#gfOverlay .rules .rh .x{ margin-left:auto; width:32px; height:32px; border-radius:10px; border:1px solid var(--line2); background:var(--surface2);
+  color:var(--muted); cursor:pointer; font-size:18px; transition:.18s }
+#gfOverlay .rules .rh .x:hover{ color:var(--fg); border-color:var(--fg) }
+#gfOverlay .rules .rb{ padding:0 20px 22px; font-size:13px; color:var(--muted); line-height:1.85 }
+#gfOverlay .rules .rb h4{ font-family:'Sora'; color:var(--fg); font-size:13.5px; margin:14px 0 6px; font-weight:700 }
+#gfOverlay .rules .rb .kv{ display:flex; gap:8px; margin:5px 0 }
+#gfOverlay .rules .rb .kv .k{ font-family:'Chakra Petch'; font-weight:700; color:var(--gold2); flex:none; min-width:74px }
+#gfOverlay .rules .rb b{ color:var(--fg) }
+@media (max-width:600px){ #gfOverlay .d120{ width:76px; height:76px } #gfOverlay .d120 .dv{ font-size:32px } }
+@media (prefers-reduced-motion:reduce){ #gfOverlay *{ animation:none!important; transition-duration:.001ms!important } }

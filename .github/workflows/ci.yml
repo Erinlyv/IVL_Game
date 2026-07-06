@@ -7,10 +7,10 @@ on:
     branches: [main]
 
 # 纯静态前端、零运行时依赖：CI 仅在 Node 下跑自测脚本。
-# _uitest / _kotest 依赖 jsdom（仅测试期），按需临时安装、不写入仓库。
+# _uitest / _kotest / _gftest 依赖 jsdom（仅测试期），按需临时安装、不写入仓库。
 jobs:
   test:
-    name: 自测脚本（冒烟 / UI / KO）
+    name: 自测脚本（冒烟 / UI / KO / 冠亚决赛）
     runs-on: ubuntu-latest
     steps:
       - name: 检出代码
@@ -32,3 +32,6 @@ jobs:
 
       - name: KO 模块专项（季后赛 / 深渊晋级图）
         run: node _kotest.js
+
+      - name: 冠亚决赛弹窗定向冲烟（7 定位 · jsdom）
+        run: node _gftest.js
