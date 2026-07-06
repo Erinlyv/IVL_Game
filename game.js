@@ -1839,7 +1839,18 @@ async function positionChangeEvent(label) {
   const switchRole = () => {
     P.role = (P.role === "监管者") ? "求生者" : "监管者";
     P.changed_position = true;
-    pushLog(`位置变更：转为${P.role}。`, "");
+    // demov5.0feedback·转位置修复：阵营切换后，旧定位仍属原阵营——会导致总决赛剧情/界面显示/
+    // 「世界第一」成就串线。随机改派一个新阵营的定位，并同步刷新 positionName 与常用角色池
+    // （数据经 chargen 共享表 window.IVLChargen 提供，与建档同源）。
+    const np = (window.IVLChargen && window.IVLChargen.rerollPosition)
+      ? window.IVLChargen.rerollPosition(P.role) : null;
+    if (np) {
+      P.position = np.position;
+      P.positionName = np.positionName;
+      P.commonRoles = np.commonRoles;
+    }
+    pushLog(`位置变更：转为${P.role}${P.positionName ? "·" + P.positionName : ""}。`, "");
+    renderHUD();
   };
   if (Math.random() < 0.5) {
     // 位置重合
@@ -1849,7 +1860,7 @@ async function positionChangeEvent(label) {
        { label: "此处不留爷，自有留爷处", hint: "拒绝：70% 转会 / 30% 退役" }]);
     if (idx === 0) {
       switchRole();
-      await say(`位置变更 · ${label}`, `<p>你接下了新角色。教练拍拍你肩膀：「难为你了。」<br>当前阵营：<b>${P.role}</b>。</p>`, "继续");
+      await say(`位置变更 · ${label}`, `<p>你接下了新角色。教练拍拍你肩膀：「难为你了。」<br>当前阵营：<b>${P.role}</b>${P.positionName ? `　定位：<b>${P.positionName}</b>` : ""}。</p>`, "继续");
     } else {
       if (Math.random() < 0.7) {
         E.doTransfer(P);
@@ -1870,7 +1881,7 @@ async function positionChangeEvent(label) {
        { label: "动之以情，晓之以理，坚持自己的位置", hint: "稳定 −2" }]);
     if (idx === 0) {
       switchRole();
-      await say(`位置变更 · ${label}`, `<p>你顶上了空缺。当前阵营：<b>${P.role}</b>。</p>`, "继续");
+      await say(`位置变更 · ${label}`, `<p>你顶上了空缺。当前阵营：<b>${P.role}</b>${P.positionName ? `　定位：<b>${P.positionName}</b>` : ""}。</p>`, "继续");
     } else {
       P.stab = Math.max(0, P.stab - 2); renderHUD();
       await say(`位置变更 · ${label}`, `<p>你说服了管理层，留在熟悉的位置。但这场拉扯让你有些分心。稳定 <b>−2</b>。</p>`, "继续");
@@ -2229,7 +2240,7 @@ function warCardHtml(rec, isForced) {
           <div class="sc-sechead between"><div class="left"><span class="bar"></span><h3>已达成就</h3></div><div class="prog">本档解锁 <b>${rec.achs.length}</b> / ${allA}</div></div>
           <div class="chips">${chips}</div>
         </div>
-        <div class="sc-foot"><span class="tip">📸 截图保存这张战报卡，晒到同人圈吧！</span><span class="sc-date">${rec.date} · #IVL模拟器 demo-v4.2</span></div>
+        <div class="sc-foot"><span class="tip">📸 截图保存这张战报卡，晒到同人圈吧！</span><span class="sc-date">${rec.date} · #IVL模拟器 v5.0</span></div>
       </div>
     </div>`;
 }
@@ -2247,7 +2258,7 @@ function warCardText(rec) {
   ];
   if (rec.spotlights.length) lines.push(`名场面：${rec.spotlights.join("、")}`);
   lines.push(`解锁成就（${rec.achs.length}）：${rec.achs.join("、") || "无"}`);
-  lines.push(`#IVL模拟器 demo-v4.2`);
+  lines.push(`#IVL模拟器 v5.0`);
   return lines.join("\n");
 }
 
@@ -2442,7 +2453,7 @@ function renderShareCanvas(rec, qrImg) {
   ctx.font = `600 14px ${FB}`; ctx.fillStyle = "#cfd6e6";
   ctx.fillText("扫码体验 · IVL 模拟器", P, y + 6);
   ctx.font = `400 12px ${FB}`; ctx.fillStyle = "#7c89a3";
-  ctx.fillText(`${rec.date} · #IVL模拟器 demo-v4.2`, P, y + 30);
+  ctx.fillText(`${rec.date} · #IVL模拟器 v5.0`, P, y + 30);
   ctx.font = `400 11px ${FB}`; ctx.fillStyle = "#5d6884";
   ctx.fillText("长按图片保存到相册分享", P, y + 52);
   y += qrS + 24;
@@ -4164,8 +4175,12 @@ function runGrandFinals(cfg) {
     const T = (ms) => FAST ? 0 : ms;
     const gq = (id) => document.getElementById(id);
     const isHunter = (P.role === '监管者');
-    const posKey = P.position || (isHunter ? 'zj' : 'qz');
-    const posDef = GF_POS[posKey] || (isHunter ? GF_POS.zj : GF_POS.qz);
+    const wantCamp = isHunter ? 'hunter' : 'surv';
+    let posKey = P.position || (isHunter ? 'zj' : 'qz');
+    // demov5.0feedback·转位置修复(防御兜底)：若定位所属阵营与当前阵营不符（老存档 / 异常），
+    // 回退到新阵营默认定位，避免总决赛走错剧情线。正常流程下 switchRole 已同步改派定位。
+    if (!GF_POS[posKey] || GF_POS[posKey].camp !== wantCamp) { posKey = isHunter ? 'zj' : 'qz'; }
+    const posDef = GF_POS[posKey];
     const teamNpc = P.teamNpc(curYear);
     const youName = cfg.youName || P.teamName || '你的战队';
     const oppName = cfg.oppName || '对手';

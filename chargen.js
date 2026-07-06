@@ -377,5 +377,31 @@
     });
   }
 
-  window.IVLChargen = { run };
+  // demov5.0feedback·转位置修复：把「定位 / 常用角色池」数据与「随机改派定位」能力暴露给主流程
+  // （game.js）。转阵营（求生者↔监管者）时，旧定位仍属原阵营，会让总决赛按 P.position 选到错误的
+  // 剧情线，并连带 positionName / 常用角色 / 「世界第一」系列成就错位。此处提供集中入口，保证数据同源。
+  //   roleCn：引擎中文阵营（"求生者" | "监管者"）。返回 { position, positionName, commonRoles } 或 null。
+  function rerollPosition(roleCn) {
+    const roleKey = (roleCn === "监管者") ? "hunter" : "survivor";
+    const positions = POSITIONS[roleKey] || [];
+    if (!positions.length) { return null; }
+    const pos = randPick(positions);
+    const pool = ROLE_POOL[pos.key] || { rec: [], opt: [] };
+    // 复用建档时的常用角色规则：恰好 ROLE_MAX 个，其中至少 REC_MIN 个为该定位推荐角色。
+    const sample = (arr, n) => {
+      const a = arr.slice();
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const t = a[i]; a[i] = a[j]; a[j] = t;
+      }
+      return a.slice(0, Math.max(0, Math.min(n, a.length)));
+    };
+    const recPicked = sample(pool.rec, REC_MIN);
+    const rest = pool.rec.concat(pool.opt).filter((r) => recPicked.indexOf(r) < 0);
+    const fill = sample(rest, Math.max(0, ROLE_MAX - recPicked.length));
+    const commonRoles = recPicked.concat(fill).slice(0, ROLE_MAX);
+    return { position: pos.key, positionName: pos.name, commonRoles };
+  }
+
+  window.IVLChargen = { run, POSITIONS, ROLE_POOL, rerollPosition };
 })();
