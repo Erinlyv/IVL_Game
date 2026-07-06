@@ -1,6 +1,8 @@
 /* =============================================================================
- * IVL 模拟器 · 角色创建流程（demo6 原样移植）
- * 交互/视觉完全照搬 demo6「俱乐部签约」四步：建档 → 定位 → 身份 → 天赋。
+ * IVL 模拟器 · 角色创建流程（demo6 原样移植 + demov4.2feedbackrole 扩展）
+ * 交互/视觉照搬 demo6「俱乐部签约」，六步：建档 → 定位 → 位置 → 常用角色 → 身份 → 天赋。
+ *   · 位置：不同位置决定常用角色池范围（求生者 4 位 / 监管者 3 位）。
+ *   · 常用角色：以「词条」呈现角色池，必选 3 个，其中至少 2 个为该位置推荐角色。
  * 数值来源仍为引擎（engine.js 的 E.Player），保证与蒙特卡洛同源；
  * 完成「签约」后 resolve 出一个已构建好的 E.Player 交给主流程。
  *
@@ -26,6 +28,58 @@
     ],
   };
 
+  // 位置选择（demov4.2feedbackrole《角色创建·位置选择选项》）：不同位置决定常用角色池范围。
+  //   求生者：牵制 / 救人 / OB / 辅助；监管者：追击 / 控场 / 守椅。
+  const POSITIONS = {
+    survivor: [
+      { key: "qz", name: "牵制位", desc: "牵制型功能位" },
+      { key: "jr", name: "救人位", desc: "救援型功能位" },
+      { key: "ob", name: "OB 位", desc: "干扰型支援位" },
+      { key: "fz", name: "辅助位", desc: "辅助型支援位" },
+    ],
+    hunter: [
+      { key: "zj", name: "追击型", desc: "通过快速击倒求生者把握对局节奏" },
+      { key: "kc", name: "控场型", desc: "通过消耗求生者把对局拖入自己的节奏" },
+      { key: "sy", name: "守椅型", desc: "通过守椅博弈扩大对局优势" },
+    ],
+  };
+
+  // 常用角色池（demov4.2feedbackrole《角色创建·常用角色选择》）：按位置区分「推荐 / 可选」。
+  //   规则：每人必选 3 个常用角色，其中至少 2 个为该位置推荐角色（也可三个都选推荐）。
+  const ROLE_POOL = {
+    qz: {
+      rec: ["气象学家", "机械师", "幸运儿", "幻灯师", "先知", "病患", "飞行家", "小说家", "木偶师"],
+      opt: ["拉拉队员", "火灾调查员", "心理学家", "杂技演员", "囚徒", "医生", "律师", "慈善家", "园丁", "魔术师", "空军", "盲女", "祭司", "舞女", "调香师", "入殓师", "咒术师", "调酒师", "邮差", "昆虫学者", "画家", "玩具商", "小女孩", "教授", "作曲家", "记者", "法罗女士", "骑士", "弓箭手", "斗牛士"],
+    },
+    jr: {
+      rec: ["佣兵", "大副", "野人", "守墓人", "哭泣小丑", "逃脱大师"],
+      opt: ["病患", "小说家", "记者", "骑士", "空军", "前锋", "入殓师", "心理学家", "木偶师", "杂技演员", "律师", "园丁", "魔术师", "冒险家"],
+    },
+    ob: {
+      rec: ["击球手", "勘探员", "前锋", "牛仔", "弓箭手", "古董商", "哭泣小丑"],
+      opt: ["气象学家", "拉拉队员", "火灾调查员", "心理学家", "幸运儿", "木偶师", "杂技演员", "幻灯师", "慈善家", "园丁", "魔术师", "空军", "先知", "入殓师", "咒术师", "调酒师", "邮差", "画家", "斗牛士", "小说家", "小女孩", "教授", "记者", "病患", "飞行家", "骑士"],
+    },
+    fz: {
+      rec: ["气象学家", "火灾调查员", "幸运儿", "幻灯师", "医生", "祭司", "昆虫学者", "画家", "调酒师", "玩具商"],
+      opt: ["小说家", "小女孩", "教授", "哭泣小丑", "古董商", "记者", "骑士", "弓箭手", "空军", "调香师", "先知", "入殓师", "咒术师", "邮差", "拉拉队员", "心理学家", "木偶师", "园丁", "冒险家"],
+    },
+    zj: {
+      rec: ["歌剧演员", "喧嚣", "女王蜂", "跛脚羊", "台球手"],
+      opt: ["小丑", "红蝶", "宿伞之魂", "红夫人", "使徒", "渔女", "守夜人", "时空之影", "爱哭鬼", "孽蜥", "26号守卫", "博士", "破轮", "小提琴家", "蜡像师", "愚人金", "杰克", "鹿头", "杂货商", "厂长", "蜘蛛"],
+    },
+    kc: {
+      rec: ["时空之影", "梦之女巫", "跛脚羊", "台球手", "女王蜂"],
+      opt: ["疯眼", "破轮", "蜡像师", "噩梦", "隐士", "记录员", "杂货商", "厂长", "歌剧演员", "宿伞之魂", "摄影师", "使徒", "守夜人", "鹿头", "蜘蛛", "喧嚣"],
+    },
+    sy: {
+      rec: ["26号守卫", "跛脚羊", "喧嚣", "台球手", "女王蜂"],
+      opt: ["厂长", "小丑", "宿伞之魂", "使徒", "守夜人", "渔女", "时空之影", "歌剧演员", "鹿头", "蜘蛛", "黄衣之主", "爱哭鬼", "孽蜥", "小提琴家", "雕刻家", "杂货商", "愚人金", "蜡像师"],
+    },
+  };
+  const posName = (role, key) => ((POSITIONS[role] || []).find((p) => p.key === key) || {}).name || "";
+  const REC_MIN = 2;      // 至少选 2 个推荐角色
+  const ROLE_MAX = 3;     // 必选 3 个常用角色
+
   // 天赋面板：四维核心（数值总量内随机分配）+ 容貌 / 人气 单独一行（v4.0《demov3.0feedback》）。
   // 删除天赋选择界面的「资金」展示。
   const CORE_ROWS = [
@@ -48,7 +102,9 @@
 
   const STEPS = [
     { title: "建立选手档案" },
-    { title: "选择你的定位" },
+    { title: "选择你的阵营" },
+    { title: "选择你的位置" },   // 监管者时在 render() 覆盖为「选择你擅长的监管者类型」
+    { title: "选择常用角色" },
     { title: "选择出道身份" },
     { title: "天赋检定" },
   ];
@@ -62,9 +118,11 @@
         <p>欢迎来到 IVL。完成四步签约手续，你的职业生涯将正式开始</p>
         <div class="track" id="cctrack">
           <div class="p" data-i="0"><span class="n">1</span>建档</div><div class="sep"></div>
-          <div class="p" data-i="1"><span class="n">2</span>定位</div><div class="sep"></div>
-          <div class="p" data-i="2"><span class="n">3</span>身份</div><div class="sep"></div>
-          <div class="p" data-i="3"><span class="n">4</span>天赋</div>
+          <div class="p" data-i="1"><span class="n">2</span>阵营</div><div class="sep"></div>
+          <div class="p" data-i="2"><span class="n">3</span>位置</div><div class="sep"></div>
+          <div class="p" data-i="3"><span class="n">4</span>角色</div><div class="sep"></div>
+          <div class="p" data-i="4"><span class="n">5</span>身份</div><div class="sep"></div>
+          <div class="p" data-i="5"><span class="n">6</span>天赋</div>
         </div>
       </div>
       <div class="card">
@@ -96,11 +154,20 @@
       cc.classList.add("show");
       const $ = (id) => cc.querySelector("#" + id);
 
-      const state = { step: 0, team: "", pid: "", role: null, identity: null, player: null };
+      const state = { step: 0, team: "", pid: "", role: null, position: null, roles: [], identity: null, player: null };
+      // 常用角色是否满足规则：恰好 3 个，且其中至少 REC_MIN 个为当前位置推荐角色。
+      const recCount = () => {
+        if (!state.position) { return 0; }
+        const rec = ROLE_POOL[state.position].rec;
+        return state.roles.filter((r) => rec.includes(r)).length;
+      };
+      const rolesValid = () => state.roles.length === ROLE_MAX && recCount() >= REC_MIN;
       const valid = (i) =>
         i === 0 ? !!(state.team && state.pid) :
         i === 1 ? !!state.role :
-        i === 2 ? !!state.identity :
+        i === 2 ? !!state.position :
+        i === 3 ? rolesValid() :
+        i === 4 ? !!state.identity :
         !!state.player;
 
       function roll() {
@@ -112,13 +179,71 @@
         );
       }
 
+      // 常用角色词条选择（demov4.2feedbackrole）：以「词条」呈现角色池，选中即高亮。
+      function renderRoles(c) {
+        const pool = ROLE_POOL[state.position];
+        if (!pool) { c.innerHTML = ""; return; }
+        $("ccguide").innerHTML = `每人必选 <b>${ROLE_MAX}</b> 个常用角色，其中至少 <b>${REC_MIN}</b> 个为该位置的推荐角色。`;
+        $("ccguide").style.display = "block";
+        c.innerHTML = `
+          <div class="rolepick">
+            <div class="rp-counter" id="ccrpc"></div>
+            <div class="rp-group">
+              <div class="rp-glabel"><span class="rp-dot rec"></span>推荐角色<em>（至少选 ${REC_MIN} 个）</em></div>
+              <div class="chips" id="ccrec"></div>
+            </div>
+            <div class="rp-group">
+              <div class="rp-glabel"><span class="rp-dot"></span>可选角色</div>
+              <div class="chips" id="ccopt"></div>
+            </div>
+          </div>`;
+        const build = (wrap, names, isRec) => {
+          names.forEach((nm) => {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.className = "chip" + (isRec ? " rec" : "");
+            b.dataset.name = nm;
+            b.textContent = nm;
+            b.onclick = () => toggleRole(nm);
+            wrap.appendChild(b);
+          });
+        };
+        build($("ccrec"), pool.rec, true);
+        build($("ccopt"), pool.opt, false);
+        syncRoles();
+      }
+      function toggleRole(nm) {
+        const i = state.roles.indexOf(nm);
+        if (i >= 0) { state.roles.splice(i, 1); }
+        else { if (state.roles.length >= ROLE_MAX) { return; } state.roles.push(nm); }
+        syncRoles();
+      }
+      // 就地刷新词条选中态 / 计数 / 底栏（不整段重渲染，避免长列表滚动位置丢失）。
+      function syncRoles() {
+        const full = state.roles.length >= ROLE_MAX;
+        cc.querySelectorAll("#cccontent .chip").forEach((b) => {
+          const on = state.roles.includes(b.dataset.name);
+          b.classList.toggle("sel", on);
+          b.classList.toggle("dim", full && !on);
+        });
+        const rc = recCount(), okRec = rc >= REC_MIN, okNum = state.roles.length === ROLE_MAX;
+        const el = $("ccrpc");
+        if (el) {
+          el.innerHTML = `已选 <b class="${okNum ? "good" : ""}">${state.roles.length}</b>/${ROLE_MAX}　·　推荐 <b class="${okRec ? "good" : ""}">${rc}</b>/${REC_MIN}`;
+        }
+        foot();
+      }
+
       function render() {
         cc.querySelectorAll("#cctrack .p").forEach((p) => {
           const i = +p.dataset.i;
           p.classList.toggle("on", i === state.step);
           p.classList.toggle("ok", i < state.step && valid(i));
         });
-        $("cctitle").textContent = STEPS[state.step].title;
+        // demov4.3feedback《文案·初始位置选择》：监管者的位置步标题改为「选择你擅长的监管者类型」。
+        $("cctitle").textContent = (state.step === 2 && state.role === "hunter")
+          ? "选择你擅长的监管者类型"
+          : STEPS[state.step].title;
         $("ccguide").style.display = "none";
         const c = $("cccontent");
         c.innerHTML = "";
@@ -143,11 +268,31 @@
           c.querySelectorAll(".opt").forEach((o) => {
             o.classList.toggle("sel", state.role === o.dataset.role);
             o.onclick = () => {
-              if (state.role !== o.dataset.role) { state.role = o.dataset.role; state.identity = null; state.player = null; }
+              if (state.role !== o.dataset.role) {
+                // 定位变更连带重置：位置 / 常用角色 / 身份 / 天赋均失效重来。
+                state.role = o.dataset.role; state.position = null; state.roles = []; state.identity = null; state.player = null;
+              }
               render();
             };
           });
         } else if (state.step === 2) {
+          $("ccguide").textContent = "不同位置对应不同的常用角色池";
+          $("ccguide").style.display = "block";
+          c.innerHTML = `<div class="opts" id="ccpos"></div>`;
+          const box = c.querySelector("#ccpos");
+          (POSITIONS[state.role] || []).forEach((o) => {
+            const el = document.createElement("div");
+            el.className = "opt" + (state.position === o.key ? " sel" : "");
+            el.innerHTML = `<div class="oh"><div class="nm">${o.name}</div></div><div class="ds">${o.desc}</div><div class="check">✓</div>`;
+            el.onclick = () => {
+              if (state.position !== o.key) { state.position = o.key; state.roles = []; }
+              render();
+            };
+            box.appendChild(el);
+          });
+        } else if (state.step === 3) {
+          renderRoles(c);
+        } else if (state.step === 4) {
           c.innerHTML = `<div class="opts" id="ccids"></div>`;
           const box = c.querySelector("#ccids");
           (IDENTITIES[state.role] || []).forEach((o) => {
@@ -181,23 +326,33 @@
 
       function foot() {
         $("ccback").style.visibility = state.step === 0 ? "hidden" : "visible";
-        const last = state.step === 3, ok = valid(state.step);
+        const last = state.step === STEPS.length - 1, ok = valid(state.step);
         const b = $("ccnext");
         b.disabled = !ok;
         b.textContent = last ? "完成签约 ✓" : "下一步 →";
-        const tips = ["填写队伍名与选手 ID", "选择一个定位", "选择一个出道身份", "满意当前天赋即可签约"];
+        const tips = ["填写队伍名与选手 ID", "选择一个阵营", "选择一个位置", `选择 ${ROLE_MAX} 个常用角色（含 ≥${REC_MIN} 个推荐）`, "选择一个出道身份", "满意当前天赋即可签约"];
         $("cctip").textContent = ok ? (last ? "手续齐备，可以签约了" : "已完成，继续下一步") : tips[state.step];
+      }
+
+      // 把位置 / 常用角色写入 player，供主流程（左侧栏、季后赛/深渊属性栏）读取。
+      function attachRoleMeta() {
+        if (!state.player) { return; }
+        state.player.position = state.position;
+        state.player.positionName = posName(state.role, state.position);
+        state.player.commonRoles = state.roles.slice();
       }
 
       $("ccnext").onclick = () => {
         if (!valid(state.step)) { return; }
-        if (state.step < 3) { state.step++; render(); return; }
+        if (state.step < STEPS.length - 1) { state.step++; render(); return; }
+        attachRoleMeta();
         const P = state.player;
         const idName = IDENTITIES[state.role].find((x) => x.key === state.identity).name;
         const roleName = ROLE_CN[state.role];
         $("ccbn").textContent = P.name;
         $("ccsum").innerHTML =
-          `定位：<b>${roleName}</b>　|　身份：<b>${idName}</b><br>` +
+          `阵营：<b>${roleName}</b>　|　位置：<b>${P.positionName}</b>　|　身份：<b>${idName}</b><br>` +
+          `常用角色：<b>${state.roles.join(" / ")}</b><br>` +
           `容貌 <b>${Math.round(P.appearance)}</b>（固定）· 体能 <b>${Math.round(P.phys)}</b> · 技术 <b>${Math.round(P.tech)}</b> · 战术 <b>${Math.round(P.tac)}</b><br>` +
           `稳定性 <b>${Math.round(P.stab)}</b> · 人气 <b>${Math.round(P.pop)}</b> · 资金 <b>${Math.round(P.money)}</b>`;
         $("ccmodal").classList.add("show");
@@ -206,8 +361,12 @@
       $("ccback").onclick = () => { if (state.step > 0) { state.step--; render(); } };
 
       $("ccclose").onclick = () => {
+        attachRoleMeta();
         const idName = IDENTITIES[state.role].find((x) => x.key === state.identity).name;
-        const result = { player: state.player, role: ROLE_CN[state.role], identityName: idName };
+        const result = {
+          player: state.player, role: ROLE_CN[state.role], identityName: idName,
+          position: posName(state.role, state.position), commonRoles: state.roles.slice(),
+        };
         cc.classList.remove("show");
         $("ccmodal").classList.remove("show");
         cc.innerHTML = "";

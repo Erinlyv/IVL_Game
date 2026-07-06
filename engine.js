@@ -132,19 +132,23 @@ const CONFIG = {
   TEAMMATE_IN_P: 0.12, TEAMMATE_OUT_P: 0.12, OTHER_TEAM_P: 0.25,
   // 队友强度（v5.4）：开局基准随机抽样，之后由战术驱动逐年累积，封顶 80。
   TEAM_BASE_RANGE: [50, 68],   // 开局队友强度基准随机区间（掷一次，固定）
-  TEAM_TAC_GAIN_CAP: 3,        // 战术驱动的队友强度单年提升上限
-  TEAM_NPC_CAP: 74,            // 队友强度总封顶（v5.4：80→74，收敛极限档决胜场胜率上抬）
+  TEAM_TAC_GAIN_CAP: 3,        // 战术驱动的「额外配合加点」上限（叠加在保底成长之上）
+  TEAM_YEAR_GAIN_MIN: 1,       // demov5.0feedback：队友每年保底成长值
+  TEAM_YEAR_GAIN_MAX: 4,       // demov5.0feedback：队友单年成长上限（保底 1 + 战术额外 ≤3）
+  TEAM_NPC_CAP: 80,            // demov5.0feedback：队友强度总封顶（74→80）
 };
 
 function selectThreshold(year) { return 32 + (year - 1) * 2.5; }
-// 战术 → 队友强度单年提升（分档、单调、封顶 CONFIG.TEAM_TAC_GAIN_CAP）。
+// 战术 → 队友强度单年提升（demov5.0feedback）：每年保底 +1，战术带来的配合成长作为
+// 额外加点（0–3，分档、单调、封顶 CONFIG.TEAM_TAC_GAIN_CAP），合计 clamp 到 [MIN, MAX] = [1, 4]。
 function teammateYearGain(tac) {
-  let g;
-  if (tac < 50) { g = 0; }
-  else if (tac < 65) { g = 1; }
-  else if (tac < 80) { g = 2; }
-  else { g = 3; }
-  return Math.min(CONFIG.TEAM_TAC_GAIN_CAP, g);
+  let bonus;
+  if (tac < 50) { bonus = 0; }
+  else if (tac < 65) { bonus = 1; }
+  else if (tac < 80) { bonus = 2; }
+  else { bonus = 3; }
+  bonus = Math.min(CONFIG.TEAM_TAC_GAIN_CAP, bonus);
+  return clamp(CONFIG.TEAM_YEAR_GAIN_MIN + bonus, CONFIG.TEAM_YEAR_GAIN_MIN, CONFIG.TEAM_YEAR_GAIN_MAX);
 }
 function growthTech(year) { return year <= 3 ? 1.0 : Math.max(0.60, 1 - 0.05 * (year - 3)); }
 const growthPhys = growthTech;
@@ -152,11 +156,16 @@ function growthTac(year) { return year <= 3 ? 1.0 : Math.max(0.75, 1 - 0.03 * (y
 function oppDelta(year) { return Math.min(1.5 * (year - 1), 6); }
 function popThr3(year) { return 120 + (year - 1) * 15; }
 
+// demov5.0feedback·常规赛对手优化：第 3–7 赛年按年设「基础区间」，均匀取基础值后
+// +oppDelta（不变）+随机扰动 ±5。第 1 赛年（新秀年）/ 第 2 赛年沿用旧口径。
+const REGULAR_OPP_RANGE = { 3: [50, 75], 4: [55, 75], 5: [58, 78], 6: [60, 80], 7: [60, 80] };
 function sampleOpp(stage, year, extra = 0) {
   const d = oppDelta(year) + extra;
   if (stage === "常规") {
     if (year === 1) return triangular(33, 60, 48);  // v6.0：新秀年上抬 31/46/58 → 33/48/60
-    return triangular(45, 74, 60) + d;              // v6.0：上限 72 → 74
+    const rg = REGULAR_OPP_RANGE[year];
+    if (rg) return rnd(rg[0], rg[1]) + d + rnd(-5, 5);  // demov5.0feedback：基础区间 + oppDelta + 扰动±5
+    return triangular(45, 74, 60) + d;              // 第 2 赛年沿用旧口径（v6.0：上限 72 → 74）
   }
   if (stage === "季后") return rnd(65, 83) + d;
   if (stage === "IVS") return rnd(60, 84) + d;     // v6.0：下限 70 → 60
@@ -358,8 +367,38 @@ class Player {
     this.npc_base = rnd(CONFIG.TEAM_BASE_RANGE[0], CONFIG.TEAM_BASE_RANGE[1]);  // 开局队友强度基准（随机，固定）
     this.npc_growth = 0;            // 战术驱动的逐年累积提升（见 advanceTeammate）
     this.npc_offset = 0;            // 转会进出 / 玩家转会带来的偏移
+    this.teammate_settle_years = 0; // demov4.3feedback：转会后磨合期——尚需跳过的「配合增长」年数（第一年为 0）
     this.opp_delta_extra = 0;
     this.recent_perf = 1.0;
+
+    // demov4.2feedback《转会优化·自由转会》：买下自己的合同 → 2 年内不触发被动（无选择权）转会，
+    // 且获得一次「自由转会」额度（可主动接触 9 支大陆战队，试训成败判定，被拒 3 次退役）。
+    this.own_contract = false;         // 是否已买下合同
+    this.contract_years_left = 0;      // 合同剩余有效赛年（>0 时压制被动 sell 转会）
+    this.free_transfer_avail = false;  // 尚未用掉的自由转会额度
+    this.free_transfer_rejects = 0;    // 自由转会被拒次数（满 3 次自动退役）
+
+    // demov4.2feedback《突发事件·宠物》：猫 / 狗各全生涯至多领养一次，每年 −300 养宠费，
+    // 钱不够则宠物离开（tag 消失）；领养满一年触发一次后续事件（→猫猫人 / 及时送达成就）。
+    this.pet_cat = null;               // { adoptYear, followupDone } | null
+    this.pet_dog = null;
+    this.pet_cat_offered = false;      // 猫事件是否已触发过（一档一次）
+    this.pet_dog_offered = false;
+
+    // demov4.2feedback《突发事件·版本变更》：训练期开始前 10% 触发，持续 1 个赛季。
+    //   得分占比(score_share) = 玩家在「你+队友」团队分中的权重（默认 0.8）；版本改写为 0.6 / 1.0。
+    //   FMVP 概率惩罚（劣势版本对应身份 ×0.5）。效果不显示，仅呈现版本前瞻文案。
+    this.score_share = 0.8;
+    this.version_active = null;         // "人类版本" | "屠夫版本" | null
+    this.fmvp_penalty = 1.0;           // FMVP 当选概率乘子（版本劣势身份 = 0.5）
+
+    // demov4.2feedback《成就》：无双 = 转过位置且求生/监管两身份都拿过 FMVP；逆版本的神 = 弱势版本拿 FMVP。
+    this.fmvp_as_survivor = false;
+    this.fmvp_as_hunter = false;
+    this.anti_meta_fmvp = false;
+    // 宠物成就追踪（收养满一年 + 特定后续选项）
+    this.ach_cat_person = false;
+    this.ach_dog_courier = false;
 
     // 计数器
     this.champ = { "夏": 0, "秋": 0, "IVS": 0, "深渊": 0 };
@@ -432,6 +471,27 @@ class Player {
     this[attr] = Math.min(100, cur + amount * factor);
   }
   get totalChamp() { return this.champ["夏"] + this.champ["秋"] + this.champ["IVS"] + this.champ["深渊"]; }
+
+  /* 单槽续局存档（demov4.3feedback·每赛年自动存档）：仅序列化实例自有数据字段。
+   * getter / 方法在原型上,不会被写入;Set 字段（spotlight / offered / _poppedAchs /
+   * fired_events）打标签转数组,反序列化时还原,保证续局后 has()/add() 等仍可用。 */
+  toJSON() {
+    const out = {};
+    for (const k of Object.keys(this)) {
+      const v = this[k];
+      out[k] = (v instanceof Set) ? { __set: [...v] } : v;
+    }
+    return out;
+  }
+  // 从存档数据重建 Player：先造带默认值的实例（未来新增字段自动兜底）,再覆盖存档字段。
+  static fromSave(data) {
+    const p = new Player(data.identity, data.teamName, data.playerId, data.role);
+    for (const k of Object.keys(data)) {
+      const v = data[k];
+      p[k] = (v && typeof v === "object" && Array.isArray(v.__set)) ? new Set(v.__set) : v;
+    }
+    return p;
+  }
 }
 
 /* ------------------------------ 伤病 ----------------------------------- */
@@ -629,7 +689,9 @@ function computeF(p, stage, oppPopBase, year, oppBonus, fdelta, buff, forcedRflo
 
 // 结算一场：返回 {win, team, opp}
 function settleGame(p, stage, oppPopBase, winPop, year, F, fainted, oppBonus) {
-  const team = 0.8 * F + 0.2 * p.teamNpc(year);
+  // demov4.2feedback《版本变更》：得分占比 score_share 决定「你」在团队分中的权重（默认 0.8）。
+  const share = (typeof p.score_share === "number") ? clamp(p.score_share, 0, 1) : 0.8;
+  const team = share * F + (1 - share) * p.teamNpc(year);
   const opp = sampleOpp(stage, year) + (oppBonus || 0) + p.opp_delta_extra;
   const win = (!fainted) && (team > opp);
   p.year_f.push(F);
@@ -654,7 +716,9 @@ function checkFMVP(p, year, fList) {
   if (avg < CONFIG.FMVP_F_MIN) return { won: false, avg, reason: "low" };
   const mates = teammateAvgs(p, year, fList.length);
   if (!mates.every(t => avg >= t)) return { won: false, avg, reason: "mate" };
-  const pVote = clamp(0.50 + (avg - 90) * 0.02, 0.30, 0.70);
+  // demov4.2feedback《版本变更》：劣势版本对应身份 FMVP 当选概率 ×0.5（fmvp_penalty）。
+  const penalty = (typeof p.fmvp_penalty === "number") ? p.fmvp_penalty : 1.0;
+  const pVote = clamp(0.50 + (avg - 90) * 0.02, 0.30, 0.70) * penalty;
   return { won: Math.random() < pVote, avg, reason: "vote", p: pVote };
 }
 
@@ -722,7 +786,11 @@ function commercialRestEligible(p, year) {
 function transferRollForced(p) {  // 是否触发"可能转会"
   const pmove = p.pop >= 150 ? CONFIG.TRANSFER_P_HIGH : CONFIG.TRANSFER_P_BASE;
   if (Math.random() >= pmove) return null;
-  return p.recent_perf < CONFIG.TRANSFER_PERF_SELL ? "sell" : "offer";
+  const kind = p.recent_perf < CONFIG.TRANSFER_PERF_SELL ? "sell" : "offer";
+  // demov4.2feedback《自由转会》：合同有效期内（2 年）不触发被动（无选择权 sell）转会，
+  // 有选择权的 offer 仍按概率触发。
+  if (kind === "sell" && p.contract_years_left > 0) return null;
+  return kind;
 }
 function doTransfer(p) {
   p.transfer_count += 1;
@@ -800,7 +868,7 @@ function computeAchievements(p, fullCareer, grandSlam, forced) {
   a["FMVP"] = (p.fmvp_total >= 1);
   a["专属王朝"] = (maxRunTrue(p.fmvp_seq) >= 2);
   a["电竞白月光"] = (p.pop >= 300);
-  a["全能选手"] = allround;
+  a["六边形战士"] = allround;   // demov4.2feedback：全能选手 → 六边形战士（重命名）
   a["操作手"] = a["战队大脑"] = false;
   if (survivor && !allround) {
     const op = p.tech >= 90, br = p.tac >= 90;
@@ -830,6 +898,26 @@ function computeAchievements(p, fullCareer, grandSlam, forced) {
   a["庄园快信"] = !!p.used_seal;
   a["逆转未来"] = !!p.used_redo;
   a["万能螺丝"] = !!p.changed_position;
+  // demov4.2feedback 新增成就
+  a["猫猫人"] = !!p.ach_cat_person;
+  a["及时送达"] = !!p.ach_dog_courier;
+  // 老大（隐藏）：仅退役（生涯落幕）时触发——容貌>80、人气>500 万、资金>50000G、冠军(不含 IVS)=5、FMVP=2（多少都不行）
+  const atRetire = !!(fullCareer || forced);
+  a["老大"] = (atRetire && p.appearance > 80 && p.pop > 500 && p.money > 50000 && nonIvs === 5 && p.fmvp_total === 2);
+  // 无双：为队伍转过位置，且求生者与监管者身份都拿过 FMVP
+  a["无双"] = (!!p.changed_position && !!p.fmvp_as_survivor && !!p.fmvp_as_hunter);
+  // 逆版本的神：在非强势版本拿下 FMVP（不含 IVS）
+  a["逆版本的神"] = !!p.anti_meta_fmvp;
+  // demov5.0feedback·新增成就（黄金）：本定位 + 深渊夺冠 + 拿过 FMVP → 「世界第一」系列。
+  const abyssFmvp = (p.champ["深渊"] >= 1 && p.fmvp_total >= 1);
+  const pos = p.position;
+  a["世界第一救人位"] = abyssFmvp && pos === "jr";
+  a["世界第一辅助位"] = abyssFmvp && pos === "fz";
+  a["世界第一操作手"] = abyssFmvp && pos === "ob";
+  a["世界第一牵制位"] = abyssFmvp && pos === "qz";
+  a["登峰造极"] = abyssFmvp && pos === "zj";
+  a["算无遗策"] = abyssFmvp && pos === "kc";
+  a["一夫当关"] = abyssFmvp && pos === "sy";
   a["人生百味"] = false;   // 白金成就：解锁所有结局和成就，由结局层结合图鉴判定后回填
   return a;
 }
@@ -841,7 +929,7 @@ function finalEnding(p, fullCareer, grandSlam, forced, ach) {
   if (grandSlam && ach["看台上的星海"] && ach["年度最佳演绎"]) return "时代丰碑";
   if (bigSlam && ach["年度最佳演绎"]) return "黄金之路";
   if (ach["大器晚成"] && ach["浴血荣光"] && ach["百炼成钢"]) return "终章封王";
-  if (ach["看台上的星海"] && ach["洲际之巅"] && ach["冠军选手"] && ach["全能选手"]) return "国民选手";
+  if (ach["看台上的星海"] && ach["洲际之巅"] && ach["冠军选手"] && ach["六边形战士"]) return "国民选手";
   if (dynasty) return "专属王朝";
   if (total >= 3) return "金雨之下";
   if (total === 0 && (p.runnerups + p.thirds) >= 5 && p.tech >= 85 && p.tac >= 85) return "无冕之王";
@@ -888,9 +976,9 @@ const ACH_DESC = {
   "FMVP": "当选 FMVP ≥1",
   "专属王朝": "连续 2 次当选 FMVP",
   "电竞白月光": "人气 ≥300 万",
-  "操作手": "求生者·技术 ≥90（与全能互斥）",
-  "战队大脑": "求生者·战术 ≥90（与全能互斥）",
-  "全能选手": "技/战/体/稳 均 ≥80",
+  "操作手": "求生者·技术 ≥90（与六边形战士互斥）",
+  "战队大脑": "求生者·战术 ≥90（与六边形战士互斥）",
+  "六边形战士": "技/战/体/稳 均 ≥80",
   "光荣的荆棘路": "首年选拔曾失败，后转正并夺冠",
   "年度最佳演绎": "当选年度最佳演绎 ≥1",
   "看台上的星海": "满役·人气≥250·3 度年度人气选手",
@@ -910,6 +998,20 @@ const ACH_DESC = {
   "庄园快信": "使用一次庄园密信",
   "逆转未来": "使用一次后悔药",
   "万能螺丝": "为队伍转过位置",
+  // demov4.2feedback 新增
+  "猫猫人": "收养猫猫满一年，且后续选择「臂弯」",
+  "及时送达": "收养狗狗满一年，且后续选择「送信」",
+  "老大": "退役时 容貌>80·人气>500万·资金>50000G·非 IVS 冠军=5·FMVP=2",
+  "无双": "为队伍转过位置，且求生者与监管者身份都拿过 FMVP",
+  "逆版本的神": "在非强势版本拿下 FMVP（监管者@人类版本 / 求生者@屠夫版本，不含 IVS）",
+  // demov5.0feedback 新增（黄金）：世界第一系列 = 对应定位 + 深渊夺冠 + FMVP
+  "世界第一救人位": "救人位 · 深渊夺冠 · 当选 FMVP",
+  "世界第一辅助位": "辅助位 · 深渊夺冠 · 当选 FMVP",
+  "世界第一操作手": "OB 位 · 深渊夺冠 · 当选 FMVP",
+  "世界第一牵制位": "牵制位 · 深渊夺冠 · 当选 FMVP",
+  "登峰造极": "追击型 · 深渊夺冠 · 当选 FMVP",
+  "算无遗策": "控场型 · 深渊夺冠 · 当选 FMVP",
+  "一夫当关": "守椅型 · 深渊夺冠 · 当选 FMVP",
   "人生百味": "解锁所有结局和成就",
 };
 
@@ -920,12 +1022,19 @@ const ACH_DESC = {
 const ACH_TIER = {
   "人生百味": "白金",
   "金满贯": "黄金", "大满贯": "黄金", "专属王朝": "黄金", "电竞白月光": "黄金", "看台上的星海": "黄金",
-  "洲际之巅": "白银", "全能选手": "白银", "一人一城": "白银", "浴血荣光": "白银", "大器晚成": "白银",
+  "无双": "黄金", "逆版本的神": "黄金", "老大": "黄金",
+  // demov5.0feedback 新增黄金成就（世界第一系列）
+  "世界第一救人位": "黄金", "世界第一辅助位": "黄金", "世界第一操作手": "黄金", "世界第一牵制位": "黄金",
+  "登峰造极": "黄金", "算无遗策": "黄金", "一夫当关": "黄金",
+  "洲际之巅": "白银", "六边形战士": "白银", "一人一城": "白银", "浴血荣光": "白银", "大器晚成": "白银",
   "光荣的荆棘路": "白银", "百炼成钢": "白银", "昙花": "白银", "天妒英才": "白银", "遗珠": "白银", "绝活信仰玩家": "白银",
+  "万能螺丝": "白银",
   "冠军选手": "青铜", "FMVP": "青铜", "年度最佳演绎": "青铜", "轻伤不下火线": "青铜", "浪迹天涯": "青铜",
-  "流量为王": "青铜", "操作手": "青铜", "战队大脑": "青铜", "返老还童": "青铜", "庄园快信": "青铜", "逆转未来": "青铜", "万能螺丝": "青铜",
+  "流量为王": "青铜", "操作手": "青铜", "战队大脑": "青铜", "返老还童": "青铜", "庄园快信": "青铜", "逆转未来": "青铜",
+  "猫猫人": "青铜", "及时送达": "青铜",
 };
-const ACH_HIDDEN = new Set(["绝活信仰玩家", "返老还童", "庄园快信", "逆转未来", "万能螺丝"]);
+// demov4.2feedback：万能螺丝改为非隐藏（白银）；新增隐藏成就「老大」。
+const ACH_HIDDEN = new Set(["绝活信仰玩家", "返老还童", "庄园快信", "逆转未来", "老大"]);
 const ENDING_TIER = {
   "时代丰碑": "黄金", "黄金之路": "黄金", "终章封王": "黄金", "国民选手": "黄金", "专属王朝": "黄金",
   "金雨之下": "白银", "无冕之王": "白银", "可靠老将": "白银", "校长好": "白银",
@@ -992,7 +1101,7 @@ const REASON_TEXT = {
   opponent_strong: [
     "你已经打得足够好了，只是对面今天几乎没有给出任何破绽。",
     "这不是一场轻易能跨过去的比赛。对手站在你面前，就像一堵准备了整个赛季的墙。",
-    "你把能做的都做了，但深渊全球赛的舞台从来不会因为努力就降低难度。"],
+    "你把能做的都做了，但这样的舞台从来不会因为努力就降低难度。"],
   high_pop_support: [
     "台下粉丝为你举起的灯牌汇成了一片应援海，也为电竞椅上的你注入了能量。",
     "你听见有人喊你的 ID。那一刻，你突然觉得自己还能再多撑一局。",
@@ -1184,6 +1293,10 @@ const TRAIN_EVENTS = {
   "后院起火": { flavor: "最近你的粉丝群中不是很太平，房管组和散粉之间起了冲突，你选择——", options: [
     { label: "不理不睬，粉丝之间的事情让他们自己解决吧", apply(p){ p.addPop(-5); p.grow("tech",5); return "你把精力全部投入训练，你的冷漠也令粉丝心寒。（人气 −5、技术 +5）"; } },
     { label: "从中协调，试图化解矛盾", apply(p){ p.grow("stab",3); p.grow("tac",2); p.stamina-=15; return "你花了一些时间和精力，但这是值得的。（稳定 +3、战术 +2、体力 −15）"; } } ] },
+  /* ----------- demov4.2feedback 新增普通突发事件 ----------- */
+  "队友情深": { flavor: "你和队友在一次节目中的亲密互动合集在网上大受欢迎，给你们涨了不少粉丝，你选择——", options: [
+    { label: "把握热度，和队友多多互动", apply(p){ p.addPop(5); p.stab=Math.max(0,p.stab-2); return "cp 粉更加狂热了！但你心里总是有些别扭。（人气 +5、稳定 −2）"; } },
+    { label: "好奇怪，还是先避嫌吧", apply(p){ p.grow("tech",1); p.grow("stab",1); return "你决定继续沉淀，要靠实力让大家看到。（技术 +1、稳定 +1）"; } } ] },
 };
 const TRAIN_EVENT_KEYS = Object.keys(TRAIN_EVENTS);
 /* 商业类训练事件（v6.0）：抽取权重 ×bizMult（=0.5+容貌/100；商业休整年再 ×2.5），其余事件权重 1.0。 */
@@ -1202,50 +1315,223 @@ function pickTrainingEvent(p) {
   return TRAIN_EVENT_KEYS[TRAIN_EVENT_KEYS.length - 1];
 }
 
+/* --------------------- 队友成长突发事件（demov5.0feedback·队友成长优化） ----------------- *
+ * 触发：仅「团队训练」项目时，TEAM_EVENT_P(3%) 概率触发，三选一随机。
+ *   type1 思路争执（二选一）：单练 → 技术 +2 / 好言相劝 → 队友水平 +2
+ *   type2 磨合默契（无选项，自动）：队友水平 +2
+ *   type3 队友低迷（二选一）：帮助调整 → 队友水平 +1 / 做好自己 → 技术 +1、稳定 +1
+ * 「队友水平」即队友配合成长，累加到 npc_growth（读值时由 teamNpc clamp 到封顶 80）。
+ * options[i].apply(p) 返回结果文案；auto 型直接 apply。 */
+const TEAM_EVENT_P = 0.03;
+const TEAM_GROW_EVENTS = {
+  "思路争执": { flavor: "队内训练赛中，你和队友因为思路不同发生争执，你选择——", options: [
+    { label: "ta 怎么能笨成这样！气死我了！我还是去单练吧", apply(p) { p.grow("tech", 2); return "你负气回去单练，技术精进了些，但配合的火候还差点意思。（技术 +2）"; } },
+    { label: "好言相劝，以理服人", apply(p) { p.npc_growth += 2; return "你耐着性子把思路讲清楚，队友豁然开朗，配合更默契了。（队友水平 +2）"; } },
+  ] },
+  "磨合默契": { flavor: "队内训练赛中，你们磨合出新的战术配合，效果非常好。", auto: true,
+    apply(p) { p.npc_growth += 2; return "新配合演练下来行云流水，全队都更有底了。（队友水平 +2）"; } },
+  "队友低迷": { flavor: "队内训练赛中，队友的状态非常不好，你选择——", options: [
+    { label: "努力帮助队友调整状态，找回手感", apply(p) { p.npc_growth += 1; return "你陪着队友复盘、开导，ta 慢慢找回了手感。（队友水平 +1）"; } },
+    { label: "无能为力啊，还是做好自己吧", apply(p) { p.grow("tech", 1); p.grow("stab", 1); return "你把精力收回到自己身上，稳扎稳打。（技术 +1、稳定 +1）"; } },
+  ] },
+};
+const TEAM_GROW_EVENT_KEYS = Object.keys(TEAM_GROW_EVENTS);
+/* 掷一次队友成长事件（仅「团队训练」调用）：命中返回 {key, ev}，否则 null。 */
+function rollTeammateEvent(p) {
+  if (Math.random() >= TEAM_EVENT_P) return null;
+  const key = choiceOf(TEAM_GROW_EVENT_KEYS);
+  return { key, ev: TEAM_GROW_EVENTS[key] };
+}
+
 /* --------------------- 赛事名场面事件（v6.0 新增 · 5 件 · 纯叙事彩蛋） ----------------- *
  * 触发条件：定位 + 上一场发挥（失常 / 胜利且正常以上）；满足时按 SPOTLIGHT_P 掷骰，
  * 各事件全生涯至多触发 1 次；效果统一 +2 人气 / +2 稳定。文案对齐《文案设计 v2.0》§10.C。
  * --------------------------------------------------------------------- */
 const SPOTLIGHT_P = 0.08;
+/* 每个名场面事件：
+ *   pop / stab —— 命中结算的人气 / 稳定（缺省 +2 / +2）；prob —— 覆盖默认 SPOTLIGHT_P。
+ *   cond(p, ctx) —— 触发前置。ctx = { win, abnormal, stage, isKO(季后/深渊淘汰), isFinal(总决赛) }。
+ * demov4.2feedback《名场面》：新增 百万佣兵 / 小丑皇 / 黄沙遗梦 / 三台机平局；并收紧已有事件触发条件。 */
+function hasCommonRole(p, name) { return !!(p.commonRoles && p.commonRoles.indexOf(name) >= 0); }
+function isRescuePos(p) { return p.position === "jr" || p.positionName === "救人位"; }
 const SPOTLIGHT_EVENTS = {
-  "世界名画": { role: "求生者", when: "abnormal",
+  // —— 求生者 · 失常 —— 世界名画（救人位不触发）
+  "世界名画": { role: "求生者", pop: 2, stab: 2,
     title: "名场面 · 世界名画",
-    text: "你的空军这把发挥严重失常，先是空枪，又被震慑，赛后全体队友目光向你看齐——这一幕被观众截图，成为赛事名场面之一。" },
-  "为什么要悲观啊": { role: "监管者", when: "abnormal",
-    title: "名场面 · 为什么要悲观啊！",
-    text: "你本有机会留人，但闪现被对手规避，情急之下又交出辅助特质「悲观」，反而给对手送出关键受击加速，最终目送对方四跑。由于发挥过于离奇，连解说都忍不住在台上叫出声。" },
-  "闪现进洞": { role: "监管者", when: "abnormal",
-    title: "名场面 · 闪现进洞",
-    text: "在圣心医院二楼，你一记闪现，没能击倒对手，却精准掉入洞中，失去了一波大节奏。操作过于离奇，成为了赛事名场面之一。" },
-  "永眠镇零天赋": { role: "监管者", when: "abnormal",
-    title: "名场面 · 永眠镇，零天赋，我叫xx你记住",
-    text: "对面选出了一个少见的角色，你忙于和教练商讨对策而忘记了选择天赋，最终只能零天赋上场硬抓，尽显心酸。但好在这是你的绝活角色，即使如此，你也没有让对面四跑。" },
-  "纯度遛鬼": { role: "求生者", when: "winNormal",
+    text: "你的空军这把发挥严重失常，先是空枪，又被震慑，赛后全体队友目光向你看齐——这一幕被观众截图，成为赛事名场面之一。",
+    cond: (p, c) => c.abnormal && p.role === "求生者" && !isRescuePos(p) },
+  // —— 求生者 · 胜利（正常及以上）—— 纯度遛鬼（救人位不触发）
+  "纯度遛鬼": { role: "求生者", pop: 2, stab: 2,
     title: "名场面 · 纯度遛鬼",
-    text: "你的囚徒发挥相当出色，毫无破绽的牵制成功四跑，让队伍赢得了胜利。赛后采访，主持人问你有什么牵制秘诀，你开玩笑说：把屏幕上亮着的都点了。" },
+    text: "你的囚徒发挥相当出色，毫无破绽的牵制成功四跑，让队伍赢得了胜利。赛后采访，主持人问你有什么牵制秘诀，你开玩笑说：把屏幕上亮着的都点了。",
+    cond: (p, c) => c.win && !c.abnormal && p.role === "求生者" && !isRescuePos(p) },
+  // —— 求生者 · 胜利 —— 百万佣兵（救人位 + 季后赛/深渊淘汰赛）
+  "百万佣兵": { role: "求生者", pop: 10, stab: 2,
+    title: "名场面 · 百万佣兵",
+    text: "在开门战，你的佣兵在 26 号守卫铺满炸弹的星光大道上救下队友，触发关键的化险为夷，最终成功三跑对手，让你们在淘汰赛中更进一步。全场因你精彩绝伦的操作而沸腾。",
+    cond: (p, c) => c.win && p.role === "求生者" && isRescuePos(p) && c.isKO },
+  // —— 监管者 · 失常 —— 为什么要悲观啊（无角色限制）
+  "为什么要悲观啊": { role: "监管者", pop: 2, stab: 2,
+    title: "名场面 · 为什么要悲观啊！",
+    text: "你本有机会留人，但闪现被对手规避，情急之下又交出辅助特质「悲观」，反而给对手送出关键受击加速，最终目送对方四跑。由于发挥过于离奇，连解说都忍不住在台上叫出声。",
+    cond: (p, c) => c.abnormal && p.role === "监管者" },
+  // —— 监管者 · 失常 —— 闪现进洞（仅常用角色含黄衣之主）
+  "闪现进洞": { role: "监管者", pop: 2, stab: 2,
+    title: "名场面 · 闪现进洞",
+    text: "在圣心医院二楼，你一记闪现，没能击倒对手，却精准掉入洞中，失去了一波大节奏。操作过于离奇，成为了赛事名场面之一。",
+    cond: (p, c) => c.abnormal && p.role === "监管者" && hasCommonRole(p, "黄衣之主") },
+  // —— 监管者 · 失常 —— 永眠镇零天赋（仅常用角色含破轮）
+  "永眠镇零天赋": { role: "监管者", pop: 2, stab: 2,
+    title: "名场面 · 永眠镇，零天赋，我叫xx你记住",
+    text: "对面选出了一个少见的角色，你忙于和教练商讨对策而忘记了选择天赋，最终只能零天赋上场硬抓，尽显心酸。但好在这是你的绝活角色，即使如此，你也没有让对面四跑。",
+    cond: (p, c) => c.abnormal && p.role === "监管者" && hasCommonRole(p, "破轮") },
+  // —— 监管者 · 胜利 —— 小丑皇（常用角色含小丑 + 总决赛获胜）
+  "小丑皇": { role: "监管者", pop: 10, stab: 2,
+    title: "名场面 · 小丑皇",
+    text: "决胜的关键对局中，你选出了你的底牌，神乎其神的「车技」和博弈引得全场欢呼连连，最终四抓对手，和自己的老伙计并肩拿下了总决赛的冠军。",
+    cond: (p, c) => c.win && p.role === "监管者" && c.isFinal && hasCommonRole(p, "小丑") },
+  // —— 监管者 · 胜利 —— 黄沙遗梦（常用角色含红夫人）
+  "黄沙遗梦": { role: "监管者", pop: 2, stab: 2,
+    title: "名场面 · 黄沙遗梦",
+    text: "在里奥的回忆，你的红夫人一镜不空，干脆利落地拿下四抓。伴随着场馆内震耳欲聋的欢呼，黄沙遗梦在屏幕里翩然舞动着裙摆。",
+    cond: (p, c) => c.win && p.role === "监管者" && hasCommonRole(p, "红夫人") },
+  // —— 监管者 · 失败 —— 三台机，两个人，平局
+  "三台机平局": { role: "监管者", pop: 2, stab: 2,
+    title: "名场面 · 三台机，两个人，平局",
+    text: "开局时，你如同天神下凡，在剩余 3 台密码机的情况下快速淘汰了两名求生者。但可惜最终脸先着地，在与求生者的拉扯中运营失误，让求生者双人保平。",
+    cond: (p, c) => !c.win && p.role === "监管者" },
 };
-/* 掷一次名场面：win=是否胜利，abnormal=上一场是否发挥失常（随机浮动落 1-2 档）。
- * 命中返回 {name, title, text} 并已结算 +2 人气 / +2 稳定；否则返回 null。 */
-function rollSpotlight(p, win, abnormal) {
-  const survivor = (p.role === "求生者");
-  let pool;
-  if (abnormal) {
-    pool = Object.keys(SPOTLIGHT_EVENTS).filter(n => {
-      const e = SPOTLIGHT_EVENTS[n];
-      return e.when === "abnormal" && e.role === p.role && !p.spotlight.has(n);
-    });
-  } else if (win && survivor) {
-    pool = Object.keys(SPOTLIGHT_EVENTS).filter(n =>
-      SPOTLIGHT_EVENTS[n].when === "winNormal" && !p.spotlight.has(n));
-  } else {
-    pool = [];
-  }
-  if (!pool.length || Math.random() >= SPOTLIGHT_P) return null;
+/* 掷一次名场面。ctx = { win, abnormal, stage, isKO, isFinal }。
+ * 命中返回 {name, title, text, pop, stab} 并已结算加成；否则返回 null。 */
+function rollSpotlight(p, ctx) {
+  const c = ctx || {};
+  const pool = Object.keys(SPOTLIGHT_EVENTS).filter(n => {
+    if (p.spotlight.has(n)) return false;
+    try { return SPOTLIGHT_EVENTS[n].cond(p, c); } catch (_e) { return false; }
+  });
+  if (!pool.length) return null;
   const name = choiceOf(pool);
-  p.spotlight.add(name); p.spotlight_count += 1;
-  p.addPop(2); p.grow("stab", 2);
   const e = SPOTLIGHT_EVENTS[name];
+  const prob = (typeof e.prob === "number") ? e.prob : SPOTLIGHT_P;
+  if (Math.random() >= prob) return null;
+  const pop = (e.pop != null) ? e.pop : 2, stab = (e.stab != null) ? e.stab : 2;
+  p.spotlight.add(name); p.spotlight_count += 1;
+  p.addPop(pop); p.grow("stab", stab);
+  return { name, title: e.title, text: e.text, pop, stab };
+}
+
+/* --------------------------- 宠物事件（demov4.2feedback·突发事件·宠物） ------------------ *
+ * 第 1–6 赛年每个训练期 3% 概率触发，猫 / 狗各全生涯至多一次；养宠每年 −300，钱不够则离开。
+ * 领养满一年（且未跑掉）触发一次后续事件：臂弯→猫猫人；送信→及时送达。
+ * --------------------------------------------------------------------- */
+const PET_P = 0.03;               // 每个训练期触发概率
+const PET_COST = 300;             // 每年养宠费用
+/* 尝试触发一次宠物「领养」事件：返回事件对象或 null（供 game.js 弹窗）。 */
+function rollPetOffer(p, year) {
+  if (year > 6) return null;
+  const pool = [];
+  if (!p.pet_cat_offered && !p.pet_cat) pool.push("cat");
+  if (!p.pet_dog_offered && !p.pet_dog) pool.push("dog");
+  if (!pool.length) return null;
+  if (Math.random() >= PET_P) return null;
+  return choiceOf(pool);
+}
+/* 领养满一年、且宠物未离开，且后续事件未触发过 → 返回 "cat" | "dog" | null。 */
+function petFollowupDue(p, year) {
+  if (p.pet_cat && !p.pet_cat.followupDone && (year - p.pet_cat.adoptYear) >= 1) return "cat";
+  if (p.pet_dog && !p.pet_dog.followupDone && (year - p.pet_dog.adoptYear) >= 1) return "dog";
+  return null;
+}
+/* 赛年养宠扣费：钱够则 −300，钱不够宠物离开。返回本年发生的离开列表（用于文案/日志）。 */
+function payPetUpkeep(p) {
+  const gone = [];
+  for (const key of ["pet_cat", "pet_dog"]) {
+    if (!p[key]) continue;
+    if (p.money >= PET_COST) { p.money -= PET_COST; }
+    else { p[key] = null; gone.push(key === "pet_cat" ? "cat" : "dog"); }
+  }
+  return gone;
+}
+
+/* --------------------------- 版本变更事件（demov4.2feedback·训练前突发事件） --------------- *
+ * 训练期开始前 10% 概率触发，每训练期至多一次，持续 1 个赛季。改写得分占比 + FMVP 概率。
+ *   人类版本：求生者玩家 得分占比 100%（队友 0）；监管者玩家 60%（队友 40）；监管者 FMVP ×0.5。
+ *   屠夫版本：求生者玩家 60%（队友 40）；监管者玩家 100%（队友 0）；求生者 FMVP ×0.5。
+ * 效果不显示，仅呈现版本前瞻文案。 */
+const VERSION_P = 0.10;
+const VERSION_EVENTS = {
+  "人类版本": { title: "版本前瞻 · 人类版本",
+    text: "在联盟发布的比赛服版本前瞻中，上线了最新的天赋改动，求生者在该赛季得到了加强，得分占比提高。" },
+  "屠夫版本": { title: "版本前瞻 · 屠夫版本",
+    text: "在联盟发布的比赛服版本前瞻中，新屠夫将登上赛场，监管者玩家在该赛季的得分概率更高。" },
+};
+/* 依据当前版本与身份，写入 score_share / fmvp_penalty（供 settleGame / checkFMVP 读取）。 */
+function applyVersionEffect(p) {
+  const survivor = (p.role === "求生者");
+  if (p.version_active === "人类版本") {
+    p.score_share = survivor ? 1.0 : 0.6;
+    p.fmvp_penalty = survivor ? 1.0 : 0.5;
+  } else if (p.version_active === "屠夫版本") {
+    p.score_share = survivor ? 0.6 : 1.0;
+    p.fmvp_penalty = survivor ? 0.5 : 1.0;
+  } else {
+    p.score_share = 0.8; p.fmvp_penalty = 1.0;
+  }
+}
+function clearVersion(p) { p.version_active = null; applyVersionEffect(p); }
+/* 训练期开始前掷版本：命中则写入 version_active 并应用效果，返回事件对象或 null。 */
+function rollVersion(p) {
+  clearVersion(p);                       // 新训练期先清掉上一个赛季的版本
+  if (Math.random() >= VERSION_P) return null;
+  const name = Math.random() < 0.5 ? "人类版本" : "屠夫版本";
+  p.version_active = name; applyVersionEffect(p);
+  const e = VERSION_EVENTS[name];
   return { name, title: e.title, text: e.text };
+}
+
+/* --------------------------- NPC 战队风格（demov4.2feedback·NPC优化·战队风格） --------------- *
+ * 每支 NPC 战队一个稳定的基准实力 base + 每局(周目)抽定的稳定性档 sd：
+ *   · 大陆赛区(cn)：InStar 稳定且发挥一般较好；另抽 2 支为「稳定强」——一支高位稳定、一支低位稳定；
+ *   · 大陆民间(amateur)：普遍稳定性低、上下摆动大；
+ *   · 日本(jp)：另抽 2 支为稳定强；其余赛区照常。
+ * 发挥采样 clamp 在 [40, 78] 实力区间内，稳定队方差小、民间队方差大。 */
+function teamBaseStrength(name) {          // 队名稳定哈希 → [52, 72]
+  const s = String(name || ""); let h = 0;
+  for (let i = 0; i < s.length; i++) { h = (h * 131 + s.charCodeAt(i)) >>> 0; }
+  return 52 + (h % 21);
+}
+const TEAM_SD_NORMAL = 8, TEAM_SD_STABLE = 3, TEAM_SD_AMATEUR = 14;
+/* 依据本局队名池构建战队风格 meta：{ [name]: {base, sd} }。 */
+function buildTeamMeta(teams) {
+  const meta = {};
+  const set = (name, base, sd) => { meta[name] = { base: clamp(base, 40, 78), sd }; };
+  // 默认：所有队普通方差
+  const all = new Set();
+  for (const r of ["cn", "amateur", "jp", "na", "sea", "hktw", "kr"]) {
+    for (const nm of (teams[r] || [])) { all.add(nm); set(nm, teamBaseStrength(nm), TEAM_SD_NORMAL); }
+  }
+  if (teams.fixed) { all.add(teams.fixed); set(teams.fixed, 66, TEAM_SD_STABLE); }  // InStar：稳定 + 一般较好
+  // 大陆赛区：抽 2 支稳定强（一高一低）
+  const cnPick = shuffle((teams.cn || []).slice());
+  if (cnPick[0]) set(cnPick[0], 70, TEAM_SD_STABLE);   // 高位稳定
+  if (cnPick[1]) set(cnPick[1], 54, TEAM_SD_STABLE);   // 低位稳定
+  // 大陆民间：普遍不稳定
+  for (const nm of (teams.amateur || [])) set(nm, teamBaseStrength(nm), TEAM_SD_AMATEUR);
+  // 日本：抽 2 支稳定强
+  const jpPick = shuffle((teams.jp || []).slice());
+  if (jpPick[0]) meta[jpPick[0]].sd = TEAM_SD_STABLE;
+  if (jpPick[1]) meta[jpPick[1]].sd = TEAM_SD_STABLE;
+  return meta;
+}
+/* 采样一支 NPC 战队本场发挥（clamp 到实力区间内）。 */
+function sampleTeamForm(meta, name) {
+  const m = (meta && meta[name]) || { base: teamBaseStrength(name), sd: TEAM_SD_NORMAL };
+  return clamp(gauss(m.base, m.sd), 40, 78);
+}
+/* 采样一支 NPC 战队一个 9 场常规赛的胜场数（0–9），由发挥映射，稳定队更集中。 */
+function sampleTeamWins(meta, name) {
+  const form = sampleTeamForm(meta, name);
+  return clamp(Math.round((form - 46) / 3.2), 0, 9);
 }
 
 /* --------------------------- 暴露到全局 -------------------------------- */
@@ -1263,6 +1549,11 @@ window.IVL = {
   computeAchievements, finalEnding, ENDING_TEXT, ACH_DESC, REASON_TEXT,
   ACH_TIER, ACH_HIDDEN, ENDING_TIER, achTier, endingTier,
   TRAIN_EVENTS, TRAIN_EVENT_KEYS, BIZ_EVENT_KEYS, bizMult, pickTrainingEvent,
+  TEAM_EVENT_P, TEAM_GROW_EVENTS, TEAM_GROW_EVENT_KEYS, rollTeammateEvent,
   SPOTLIGHT_EVENTS, SPOTLIGHT_P, rollSpotlight,
+  // demov4.2feedback 新增
+  PET_P, PET_COST, rollPetOffer, petFollowupDue, payPetUpkeep,
+  VERSION_P, VERSION_EVENTS, rollVersion, applyVersionEffect, clearVersion,
+  buildTeamMeta, sampleTeamForm, sampleTeamWins, teamBaseStrength,
 };
 

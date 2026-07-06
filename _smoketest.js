@@ -216,3 +216,58 @@ for (const [name, cfg] of Object.entries(POLICIES)) {
   console.log(`  结局Top:`, Object.fromEntries(Object.entries(finals).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => [k, pc(v)])));
 }
 console.log("\n对照蒙特卡洛 v2.5（数值 v6.0）：冠军疲劳减负 + 深渊下调后金满贯/全球冠应上升；颜值流量伤重退役仍应被压低(≤~35%)、中层满役结局承接普通周目。");
+
+/* ===================== 单槽续局存档 · 序列化断言（demov4.3feedback） =====================
+ * 覆盖最易出错处:Set 字段还原、getter/方法经原型链幸存、往返数值一致、老档缺字段有默认兜底。
+ * 断言失败即抛错(非零退出),不得 TODO 跳过。 */
+(function testRunSaveSerialization() {
+  let fails = 0;
+  const ok = (cond, msg) => { if (!cond) { fails++; console.error("  ✗ " + msg); } };
+
+  // 造一个带各类字段的进行中存档态(Set / 嵌套对象 / 计数器 / 续局标记)。
+  const p = new E.Player("青训", "Nova", "Ace", "求生者");
+  p.tech = 88; p.tac = 77; p.phys = 66; p.stab = 55; p.appearance = 42;
+  p.money = 4321; p.pop = 12.5; p.champ["夏"] = 2; p.champ["深渊"] = 1;
+  p.inv["柠檬水"] = 3; p.transfer_count = 2; p.npc_growth = 7;
+  p.pet_cat = { adoptYear: 3, followupDone: false };
+  p.spotlight.add("残血翻盘"); p.spotlight.add("极限救人");
+  p.offered.add("金满贯特典");
+  p._poppedAchs = new Set(["万能螺丝"]);
+  p._grandSlam = true;
+  p.cur_year = 4;
+
+  // 走真实存档路径:JSON 序列化(触发 toJSON) → 反序列化 → 重建 Player。
+  const wire = JSON.parse(JSON.stringify({ player: p.toJSON() }));
+  const q = E.Player.fromSave(wire.player);
+
+  // 1) 标量 / 嵌套对象往返一致
+  ok(q.tech === 88 && q.tac === 77 && q.phys === 66 && q.stab === 55, "四维往返一致");
+  ok(q.money === 4321 && Math.abs(q.pop - 12.5) < 1e-9, "资金/人气往返一致");
+  ok(q.champ["夏"] === 2 && q.champ["深渊"] === 1, "冠军计数嵌套对象往返一致");
+  ok(q.inv["柠檬水"] === 3, "背包嵌套对象往返一致");
+  ok(q.pet_cat && q.pet_cat.adoptYear === 3 && q.pet_cat.followupDone === false, "宠物嵌套对象往返一致");
+  ok(q._grandSlam === true && q.cur_year === 4, "续局标记/年份往返一致");
+
+  // 2) Set 字段必须还原为真正的 Set,且成员一致(否则续局后 has()/add() 会崩)
+  ok(q.spotlight instanceof Set && q.spotlight.has("残血翻盘") && q.spotlight.has("极限救人") && q.spotlight.size === 2, "spotlight 还原为 Set");
+  ok(q.offered instanceof Set && q.offered.has("金满贯特典"), "offered 还原为 Set");
+  ok(q._poppedAchs instanceof Set && q._poppedAchs.has("万能螺丝"), "_poppedAchs 还原为 Set");
+
+  // 3) getter / 方法经原型链幸存,且计算值与原实例一致
+  ok(typeof q.cp === "number" && Math.abs(q.cp - p.cp) < 1e-9, "getter cp 幸存且一致");
+  ok(Math.abs(q.pop_mult - p.pop_mult) < 1e-9, "getter pop_mult 幸存且一致");
+  ok(q.totalChamp === p.totalChamp, "getter totalChamp 幸存且一致");
+  ok(typeof q.advanceTeammate === "function", "方法 advanceTeammate 幸存");
+  const g0 = q.npc_growth; const gain = q.advanceTeammate();
+  ok(typeof gain === "number" && q.npc_growth === g0 + gain, "方法 advanceTeammate 可正常调用");
+
+  // 4) 老档缺字段:fromSave 先造默认实例再覆盖,缺失字段应取构造默认值(前向兼容)
+  const partial = { identity: "青训", teamName: "Nova", playerId: "Ace", role: "求生者", tech: 90 };
+  const r = E.Player.fromSave(partial);
+  ok(r.tech === 90, "老档已有字段覆盖成功");
+  ok(r.inv && r.inv["柠檬水"] === 0 && r.champ && r.champ["夏"] === 0, "老档缺失字段回落默认值");
+  ok(r.offered instanceof Set && r.spotlight instanceof Set, "老档缺失 Set 字段回落为空 Set");
+
+  if (fails) { throw new Error(`续局存档序列化断言失败:${fails} 项未通过`); }
+  console.log("\n[续局存档] 序列化/反序列化断言全部通过（Set 还原 · getter/方法幸存 · 往返一致 · 老档兜底）。");
+})();
