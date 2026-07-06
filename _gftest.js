@@ -51,6 +51,9 @@ try {
 console.log("loaded; typeof __gfRun =", typeof dom.window.__gfRun);
 
 const cases = [["求生者","qz"],["求生者","jr"],["求生者","ob"],["求生者","fz"],["监管者","zj"],["监管者","kc"],["监管者","sy"]];
+// demov5.0feedback·转位置修复(防御兜底)：阵营与定位不符（老档 / 转位置后残留旧定位）时，
+// runGrandFinals 的 posKey 阵营校验应回退到新阵营默认定位，仍能从序章跑到解算而不串线/崩溃。
+const mismatchCases = [["监管者","qz"],["监管者","jr"],["求生者","zj"],["求生者","sy"]];
 let failed = 0;
 
 async function driveOne(role, pos) {
@@ -122,6 +125,10 @@ async function driveIntegration(role, pos) {
   // 每个定位跑 6 次，覆盖随机分支 + 加时路径
   for (const [role, pos] of cases) {
     for (let i = 0; i < 6; i++) { await driveOne(role, pos); }
+  }
+  console.log("\n[转位置兜底：阵营与定位不符时应回退新阵营默认定位]");
+  for (const [role, pos] of mismatchCases) {
+    for (let i = 0; i < 3; i++) { await driveOne(role, pos); }
   }
   console.log("\n[集成：真实 runKnockoutScreen 拦截冠亚决赛]");
   for (const [role, pos] of [["求生者","qz"],["监管者","zj"]]) {

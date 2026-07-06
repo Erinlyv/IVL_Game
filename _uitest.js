@@ -200,8 +200,61 @@ function testSaveResume() {
   console.log("[续局存档] 集成断言通过：saveRun → 关档 → loadRun → resumeRun → clearRun 世界状态完整恢复。");
 }
 
+/* 转位置修复 · 回归断言（demov5.0feedback）：转阵营(求生者↔监管者)后，必须同步改派新阵营的
+ * 定位并刷新 positionName / 常用角色，否则总决赛按 P.position 选到错误剧情线。此处验证:
+ *   1) IVLChargen 已暴露共享定位/角色池表与 rerollPosition;
+ *   2) rerollPosition 产出的定位阵营与目标阵营一致、positionName 非空、常用角色恰 3 个含 ≥2 推荐;
+ *   3) 总决赛 posKey 阵营校验(防御兜底)对"残留旧阵营定位"会回退到新阵营默认定位。
+ * 断言失败即抛错(退出码 1),不得跳过。 */
+function testPositionSwitch() {
+  const dom3 = new JSDOM(`<!DOCTYPE html><html><body>
+    <div id="hud"></div><div id="log"></div>
+    <section><div id="main"></div></section>
+    <div id="toast"></div><div id="cc"></div>
+  </body></html>`, { runScripts: "outside-only", pretendToBeVisual: true });
+  const testBody = `\n;//---\n(function () {
+    const R = { fails: [], ok: (c, m) => { if (!c) R.fails.push(m); } };
+    const CG = window.IVLChargen;
+    R.ok(CG && typeof CG.rerollPosition === "function", "IVLChargen.rerollPosition 已暴露");
+    R.ok(CG && CG.POSITIONS && CG.ROLE_POOL, "IVLChargen 已暴露定位/角色池共享表");
+    const campExpect = { "求生者": "surv", "监管者": "hunter" };
+    ["求生者", "监管者"].forEach((role) => {
+      for (let i = 0; i < 40; i++) {
+        const np = CG.rerollPosition(role);
+        R.ok(np && np.position && GF_POS[np.position], role + ": 改派定位命中 GF_POS(" + (np && np.position) + ")");
+        R.ok(np && GF_POS[np.position] && GF_POS[np.position].camp === campExpect[role], role + ": 改派定位阵营与目标阵营一致");
+        R.ok(np && typeof np.positionName === "string" && np.positionName.length > 0, role + ": positionName 非空");
+        R.ok(np && Array.isArray(np.commonRoles) && np.commonRoles.length === 3, role + ": 常用角色恰 3 个");
+        const rec = (CG.ROLE_POOL[np.position] || {}).rec || [];
+        const recHit = (np ? np.commonRoles : []).filter((r) => rec.indexOf(r) >= 0).length;
+        R.ok(recHit >= 2, role + ": 常用角色含 ≥2 推荐");
+      }
+    });
+    // 复现 runGrandFinals 的 posKey 阵营校验(与实现同源的兜底规则)：残留旧阵营定位应回退到新阵营默认。
+    const guard = (roleCn, pos) => {
+      const isHunter = (roleCn === "监管者");
+      const wantCamp = isHunter ? "hunter" : "surv";
+      let posKey = pos || (isHunter ? "zj" : "qz");
+      if (!GF_POS[posKey] || GF_POS[posKey].camp !== wantCamp) { posKey = isHunter ? "zj" : "qz"; }
+      return posKey;
+    };
+    R.ok(GF_POS[guard("监管者", "qz")].camp === "hunter", "兜底: 监管者残留求生定位(qz)→回退监管默认");
+    R.ok(GF_POS[guard("求生者", "zj")].camp === "surv", "兜底: 求生者残留监管定位(zj)→回退求生默认");
+    R.ok(guard("监管者", "kc") === "kc", "兜底: 阵营一致时保留原定位");
+    return JSON.stringify(R.fails);
+  })()`;
+  const raw = dom3.window.eval(engineSrc + "\n;//---\n" + chargenSrc + "\n;//---\n" + gameSrc + testBody);
+  const fails = JSON.parse(raw);
+  if (fails.length) {
+    fails.forEach((m) => console.error("  ✗ " + m));
+    throw new Error("转位置修复断言失败：" + fails.length + " 项未通过");
+  }
+  console.log("[转位置修复] 断言通过：rerollPosition 阵营/定位名/常用角色一致 + 总决赛 posKey 阵营兜底生效。");
+}
+
 async function run() {
   testSaveResume();
+  testPositionSwitch();
   dom.window.__KO_FAST = true;   // 关闭晋级图动画时序，冲烟快速跑通
   dom.window.dispatchEvent(new dom.window.Event("DOMContentLoaded"));
   let idle = 0, ticks = 0;
