@@ -405,6 +405,7 @@ class Player {
     this.runnerups = 0;
     this.thirds = 0;
     this.fmvp_total = 0;
+    this.fmvp_non_ivs = 0;           // demov5.01feedback：非 IVS 赛事的 FMVP 计数（「老大」成就口径与「非 IVS 冠军」对齐）
     this.fmvp_seq = [];
     this.ev_count = 0;
     this.won_with_teno = false;
@@ -745,6 +746,7 @@ function settleChamp(p, kind, year, fmvp, moneyOverride) {
   if (p.teno_active) p.won_with_teno = true;
   if (fmvp) {
     p.fmvp_total += 1; p.fmvp_per_year[year] = (p.fmvp_per_year[year] || 0) + 1;
+    if (kind !== "IVS") { p.fmvp_non_ivs += 1; }   // demov5.01feedback：IVS FMVP 不计入「老大」判定
     p.addPop(CONFIG.FMVP_REWARD[0]); p.money += CONFIG.FMVP_REWARD[1];
   }
   p.fmvp_seq.push(!!fmvp);
@@ -901,9 +903,10 @@ function computeAchievements(p, fullCareer, grandSlam, forced) {
   // demov4.2feedback 新增成就
   a["猫猫人"] = !!p.ach_cat_person;
   a["及时送达"] = !!p.ach_dog_courier;
-  // 老大（隐藏）：仅退役（生涯落幕）时触发——容貌>80、人气>500 万、资金>50000G、冠军(不含 IVS)=5、FMVP=2（多少都不行）
+  // 老大（隐藏）：仅退役（生涯落幕）时触发——容貌>80、人气>500 万、资金>50000G、冠军(不含 IVS)=5、FMVP(不含 IVS)=2（多少都不行）
+  // demov5.01feedback：FMVP 口径与冠军口径对齐，均不含 IVS（用 fmvp_non_ivs 而非 fmvp_total）。
   const atRetire = !!(fullCareer || forced);
-  a["老大"] = (atRetire && p.appearance > 80 && p.pop > 500 && p.money > 50000 && nonIvs === 5 && p.fmvp_total === 2);
+  a["老大"] = (atRetire && p.appearance > 80 && p.pop > 500 && p.money > 50000 && nonIvs === 5 && p.fmvp_non_ivs === 2);
   // 无双：为队伍转过位置，且求生者与监管者身份都拿过 FMVP
   a["无双"] = (!!p.changed_position && !!p.fmvp_as_survivor && !!p.fmvp_as_hunter);
   // 逆版本的神：在非强势版本拿下 FMVP（不含 IVS）
@@ -1001,7 +1004,7 @@ const ACH_DESC = {
   // demov4.2feedback 新增
   "猫猫人": "收养猫猫满一年，且后续选择「臂弯」",
   "及时送达": "收养狗狗满一年，且后续选择「送信」",
-  "老大": "退役时 容貌>80·人气>500万·资金>50000G·非 IVS 冠军=5·FMVP=2",
+  "老大": "退役时 容貌>80·人气>500万·资金>50000G·非 IVS 冠军=5·非 IVS FMVP=2",
   "无双": "为队伍转过位置，且求生者与监管者身份都拿过 FMVP",
   "逆版本的神": "在非强势版本拿下 FMVP（监管者@人类版本 / 求生者@屠夫版本，不含 IVS）",
   // demov5.0feedback 新增（黄金）：世界第一系列 = 对应定位 + 深渊夺冠 + FMVP
@@ -1351,9 +1354,13 @@ const SPOTLIGHT_P = 0.08;
 /* 每个名场面事件：
  *   pop / stab —— 命中结算的人气 / 稳定（缺省 +2 / +2）；prob —— 覆盖默认 SPOTLIGHT_P。
  *   cond(p, ctx) —— 触发前置。ctx = { win, abnormal, stage, isKO(季后/深渊淘汰), isFinal(总决赛) }。
- * demov4.2feedback《名场面》：新增 百万佣兵 / 小丑皇 / 黄沙遗梦 / 三台机平局；并收紧已有事件触发条件。 */
+ * demov4.2feedback《名场面》：新增 百万佣兵 / 小丑皇 / 黄沙遗梦 / 三台机平局；并收紧已有事件触发条件。
+ * demov5.01feedback《新增名场面》：再增 8 件 —— 求生 4 胜（奇迹三遛/最速修机传说/世一击/奔跑吧骄傲的少年）
+ *   + 1 负（咕嘟咕嘟咕嘟）、监管 3 胜（你不能就这样离开/史上最长对决/车碎羊笼）；均 +2 人气 / +2 稳定。 */
 function hasCommonRole(p, name) { return !!(p.commonRoles && p.commonRoles.indexOf(name) >= 0); }
 function isRescuePos(p) { return p.position === "jr" || p.positionName === "救人位"; }
+/* 定位判定：position 存位置 key（qz/jr/ob/fz/zj/kc/sy），部分老档只有中文 positionName，故两者都比。 */
+function isPos(p, key, cn) { return p.position === key || (cn && p.positionName === cn); }
 const SPOTLIGHT_EVENTS = {
   // —— 求生者 · 失常 —— 世界名画（救人位不触发）
   "世界名画": { role: "求生者", pop: 2, stab: 2,
@@ -1400,8 +1407,51 @@ const SPOTLIGHT_EVENTS = {
     title: "名场面 · 三台机，两个人，平局",
     text: "开局时，你如同天神下凡，在剩余 3 台密码机的情况下快速淘汰了两名求生者。但可惜最终脸先着地，在与求生者的拉扯中运营失误，让求生者双人保平。",
     cond: (p, c) => !c.win && p.role === "监管者" },
+
+  /* —— demov5.01feedback《新增名场面》：求生 4 胜 + 1 负、监管 3 胜 —— */
+  // —— 求生者 · 胜利 —— 奇迹三遛（辅助位）
+  "奇迹三遛": { role: "求生者", pop: 2, stab: 2,
+    title: "名场面 · 奇迹三遛",
+    text: "所有解说都认为，这局已经没有获胜的可能，律师必将在开门战前被淘汰，除非……除非空军给了一个奇迹般的三遛！你救下队友后化身人肉封窗，成功将律师保到了开门战。",
+    cond: (p, c) => c.win && p.role === "求生者" && isPos(p, "fz", "辅助位") },
+  // —— 求生者 · 胜利 —— 最速修机传说（加赛获胜）
+  "最速修机传说": { role: "求生者", pop: 2, stab: 2,
+    title: "名场面 · 最速修机传说",
+    text: "加时赛中，在知道对面有一手记录员的情况下，你提议孤注一掷选择四个修机位来抢时间。在看到 BP 结果时，观众与解说都不敢相信自己的眼睛。这一次剑走偏锋，让你们获得了最终的胜利。",
+    cond: (p, c) => c.win && c.overtime && p.role === "求生者" },
+  // —— 求生者 · 胜利 —— 世一击！（OB 位）
+  "世一击": { role: "求生者", pop: 2, stab: 2,
+    title: "名场面 · 世一击！",
+    text: "队友们总说，当你选出击球手的时候就很有安全感。事实也是如此——你面对使徒安，飞轮躲沉默，又打出预判球，成功将队友保到开门战，最终完成三跑。操作之细节令人赞叹。",
+    cond: (p, c) => c.win && p.role === "求生者" && isPos(p, "ob", "OB 位") },
+  // —— 求生者 · 胜利 —— 奔跑吧，骄傲的少年！（季后赛/深渊淘汰赛）
+  "奔跑吧骄傲的少年": { role: "求生者", pop: 2, stab: 2,
+    title: "名场面 · 奔跑吧，骄傲的少年！",
+    text: "在队伍面临大比分劣势时，你和队友没有放弃希望，而是把握每一丝可能翻盘的机会。隐喻砸板，放画硬控，磁铁吸晕，火箭救援——天衣无缝的配合，在绝境中为队伍扳回 5 分，让所有人都看到了你们的韧性。",
+    cond: (p, c) => c.win && p.role === "求生者" && c.isKO },
+  // —— 求生者 · 失败 —— 咕嘟咕嘟咕嘟（OB 位）
+  "咕嘟咕嘟咕嘟": { role: "求生者", pop: 2, stab: 2,
+    title: "名场面 · 咕嘟咕嘟咕嘟",
+    text: "这是一把必须多跑的对局，你选出了击球手来争胜，并在队友二次倒地时前来 OB。满状态的你在渔女的水汽中三进三出，倒地的队友不得不操控虫群辅助你，然而你还是被水汽炸倒了。",
+    cond: (p, c) => !c.win && p.role === "求生者" && isPos(p, "ob", "OB 位") },
+  // —— 监管者 · 胜利 —— 你不能就这样离开！（季后赛/深渊淘汰赛 + 常用角色含鹿头）
+  "你不能就这样离开": { role: "监管者", pop: 2, stab: 2,
+    title: "名场面 · 你不能就这样离开！",
+    text: "你的队伍比分落后、濒临淘汰。千钧一发之际，你的鹿头在门口出勾极限留人，在看似必败的局面中硬生生撕开一道口子，最终拿下比赛的胜利。",
+    cond: (p, c) => c.win && p.role === "监管者" && c.isKO && hasCommonRole(p, "鹿头") },
+  // —— 监管者 · 胜利 —— 史上最长对决（控场型）
+  "史上最长对决": { role: "监管者", pop: 2, stab: 2,
+    title: "名场面 · 史上最长对决",
+    text: "在湖景村，你选出了记录员，开场快速击倒求生者，节奏一片大好。为了不让求生者走地窖，你与最后两名求生者反复拉扯长达 25 分钟。当然，你获得了最终的胜利。",
+    cond: (p, c) => c.win && p.role === "监管者" && isPos(p, "kc", "控场型") },
+  // —— 监管者 · 胜利 —— 车碎“羊”笼（常用角色含跛脚羊）
+  "车碎羊笼": { role: "监管者", pop: 2, stab: 2,
+    title: "名场面 · 车碎“羊”笼",
+    text: "在永眠镇，你挂上求生，准备一个帅气的后撤笼去独栋排人，却没能获得电车哥哥的允许，直接被撞回椅下。虽然这一局贡献了不少名场面，但好在实力过硬，依旧为队伍稳稳拿下 5 分。",
+    cond: (p, c) => c.win && p.role === "监管者" && hasCommonRole(p, "跛脚羊") },
 };
-/* 掷一次名场面。ctx = { win, abnormal, stage, isKO, isFinal }。
+/* 掷一次名场面。ctx = { win, abnormal, stage, isKO, isFinal, overtime }。
+ *   overtime —— 总决赛是否被拖入加赛并由加赛决出胜负（demov5.01feedback「最速修机传说」触发前置）。
  * 命中返回 {name, title, text, pop, stab} 并已结算加成；否则返回 null。 */
 function rollSpotlight(p, ctx) {
   const c = ctx || {};

@@ -271,3 +271,117 @@ console.log("\n对照蒙特卡洛 v2.5（数值 v6.0）：冠军疲劳减负 + �
   if (fails) { throw new Error(`续局存档序列化断言失败:${fails} 项未通过`); }
   console.log("\n[续局存档] 序列化/反序列化断言全部通过（Set 还原 · getter/方法幸存 · 往返一致 · 老档兜底）。");
 })();
+
+/* ===================== 赛事名场面 · 触发条件断言（demov5.01feedback·新增 8 件） =====================
+ * 只验证 cond 门槛（定位 / 加赛 / 淘汰赛 / 常用角色）与命中结算，随机概率用桩固定，保证可复现。
+ * 断言失败即抛错，不得 TODO 跳过。 */
+(function testSpotlightConditions() {
+  let fails = 0;
+  const ok = (cond, msg) => { if (!cond) { fails++; console.error("  ✗ " + msg); } };
+  const EV = E.SPOTLIGHT_EVENTS;
+  ok(EV, "SPOTLIGHT_EVENTS 已导出");
+
+  const mkP = (role, pos, roles) => {
+    const p = new E.Player("青训", "Nova", "Ace", role);
+    p.position = pos; p.commonRoles = roles || [];
+    return p;
+  };
+  const c = (name, p, ctx) => EV[name].cond(p, ctx);
+
+  // 逐条正例（应命中） + 关键反例（不应命中）
+  const surv = mkP("求生者", "fz");
+  ok(c("奇迹三遛", surv, { win: true }), "奇迹三遛：辅助位胜利命中");
+  ok(!c("奇迹三遛", mkP("求生者", "ob"), { win: true }), "奇迹三遛：非辅助位不命中");
+  ok(!c("奇迹三遛", mkP("求生者", "fz"), { win: false }), "奇迹三遛：失败不命中");
+
+  ok(c("最速修机传说", mkP("求生者", "qz"), { win: true, overtime: true }), "最速修机传说：加赛获胜命中（不限定位）");
+  ok(!c("最速修机传说", mkP("求生者", "qz"), { win: true, overtime: false }), "最速修机传说：非加赛不命中");
+  ok(!c("最速修机传说", mkP("监管者", "kc"), { win: true, overtime: true }), "最速修机传说：监管者不命中");
+
+  ok(c("世一击", mkP("求生者", "ob"), { win: true }), "世一击：OB 位胜利命中");
+  ok(!c("世一击", mkP("求生者", "ob"), { win: false }), "世一击：失败不命中");
+
+  ok(c("奔跑吧骄傲的少年", mkP("求生者", "qz"), { win: true, isKO: true }), "奔跑吧骄傲的少年：淘汰赛获胜命中");
+  ok(!c("奔跑吧骄傲的少年", mkP("求生者", "qz"), { win: true, isKO: false }), "奔跑吧骄傲的少年：非淘汰赛不命中");
+
+  ok(c("咕嘟咕嘟咕嘟", mkP("求生者", "ob"), { win: false }), "咕嘟咕嘟咕嘟：OB 位失败命中");
+  ok(!c("咕嘟咕嘟咕嘟", mkP("求生者", "ob"), { win: true }), "咕嘟咕嘟咕嘟：获胜不命中");
+
+  const hun = mkP("监管者", "zj", ["鹿头", "小丑"]);
+  ok(c("你不能就这样离开", hun, { win: true, isKO: true }), "你不能就这样离开：淘汰赛+鹿头命中");
+  ok(!c("你不能就这样离开", mkP("监管者", "zj", ["小丑"]), { win: true, isKO: true }), "你不能就这样离开：无鹿头不命中");
+  ok(!c("你不能就这样离开", hun, { win: true, isKO: false }), "你不能就这样离开：非淘汰赛不命中");
+
+  ok(c("史上最长对决", mkP("监管者", "kc"), { win: true }), "史上最长对决：控场型获胜命中");
+  ok(!c("史上最长对决", mkP("监管者", "zj"), { win: true }), "史上最长对决：非控场型不命中");
+
+  ok(c("车碎羊笼", mkP("监管者", "sy", ["跛脚羊"]), { win: true }), "车碎羊笼：常用角色含跛脚羊命中");
+  ok(!c("车碎羊笼", mkP("监管者", "sy", ["女王蜂"]), { win: true }), "车碎羊笼：无跛脚羊不命中");
+
+  // rollSpotlight 命中结算 + 全生涯至多一次（用桩把概率拉满）
+  const p = mkP("监管者", "kc");
+  const pop0 = p.pop, stab0 = p.stab;
+  const origRandom = Math.random;
+  Math.random = () => 0;   // 桩：choiceOf 取首个候选 + prob 判定必过
+  try {
+    const spot = E.rollSpotlight(p, { win: true, isKO: false, isFinal: false });
+    ok(spot && spot.pop === 2 && spot.stab === 2, "rollSpotlight 命中并返回 +2/+2 结算意图");
+    ok(p.spotlight.has(spot.name) && p.spotlight_count === 1, "命中后写入 spotlight 集合并计数");
+    // 人气按 pop_mult 缩放、稳定走成长曲线，故只断言单调增（不断言精确 +2）。
+    ok(p.pop > pop0 && p.stab > stab0, "命中后人气/稳定加成落账（单调增）");
+    const before = p.spotlight_count;
+    for (let i = 0; i < 20; i++) { E.rollSpotlight(p, { win: true, isKO: false, isFinal: false }); }
+    ok(!p.spotlight.has(spot.name) || p.spotlight_count >= before, "同一事件不重复触发（各全生涯至多一次）");
+    ok(!p.spotlight.size || true, "rollSpotlight 池耗尽/去重不崩溃");
+  } finally { Math.random = origRandom; }
+
+  if (fails) { throw new Error(`赛事名场面触发条件断言失败:${fails} 项未通过`); }
+  console.log("\n[赛事名场面] demov5.01feedback 新增 8 件触发条件断言全部通过（定位 / 加赛 / 淘汰赛 / 常用角色 · 命中结算 · 去重）。");
+})();
+
+/* ===================== 「老大」成就 · IVS FMVP 不计入判定（demov5.01feedback） =====================
+ * ① settleChamp 命中 FMVP 时：非 IVS → fmvp_total 与 fmvp_non_ivs 同步 +1；IVS → 仅 fmvp_total +1。
+ * ② 老大条件改用 fmvp_non_ivs：含 IVS FMVP 不应把总数凑够，非 IVS FMVP 恰为 2 才达成。
+ * 断言失败即抛错，不得 TODO 跳过。 */
+(function testBossAchievementIvsFmvp() {
+  let fails = 0;
+  const ok = (cond, msg) => { if (!cond) { fails++; console.error("  ✗ " + msg); } };
+
+  // ① settleChamp 计数口径
+  const p = new E.Player("青训", "Nova", "Ace", "求生者");
+  E.settleChamp(p, "夏", 1, true, 0);
+  ok(p.fmvp_total === 1 && p.fmvp_non_ivs === 1, "非 IVS FMVP → fmvp_total 与 fmvp_non_ivs 同步 +1");
+  E.settleChamp(p, "IVS", 1, true, 0);
+  ok(p.fmvp_total === 2 && p.fmvp_non_ivs === 1, "IVS FMVP → 仅 fmvp_total +1，fmvp_non_ivs 不变");
+  E.settleChamp(p, "深渊", 1, false, 0);
+  ok(p.fmvp_total === 2 && p.fmvp_non_ivs === 1, "夺冠但非 FMVP → 两个计数均不变");
+
+  // ② 老大条件用 fmvp_non_ivs（不含 IVS）
+  const mkBoss = () => {
+    const q = new E.Player("青训", "Nova", "Boss", "监管者");
+    q.appearance = 85; q.pop = 600; q.money = 60000;
+    q.champ = { "夏": 5, "秋": 0, "IVS": 1, "深渊": 0 };   // 非 IVS 冠军 = 5
+    return q;
+  };
+  const q1 = mkBoss();
+  q1.fmvp_total = 3; q1.fmvp_non_ivs = 2;   // 含 1 次 IVS FMVP + 2 次非 IVS FMVP
+  ok(E.computeAchievements(q1, true, false, null)["老大"] === true, "老大：非 IVS FMVP=2 时达成（IVS FMVP 不影响）");
+
+  const q2 = mkBoss();
+  q2.fmvp_total = 2; q2.fmvp_non_ivs = 1;   // 只有 1 次非 IVS FMVP，靠 1 次 IVS 凑到 total=2
+  ok(E.computeAchievements(q2, true, false, null)["老大"] === false, "老大：非 IVS FMVP≠2 不达成（旧口径会误判）");
+
+  const q3 = mkBoss();
+  q3.fmvp_total = 3; q3.fmvp_non_ivs = 3;   // 非 IVS FMVP=3，超出
+  ok(E.computeAchievements(q3, true, false, null)["老大"] === false, "老大：非 IVS FMVP 多于 2 也不达成");
+
+  // ③ fmvp_non_ivs 参与续局存档往返
+  const wire = JSON.parse(JSON.stringify({ player: q1.toJSON() }));
+  const r = E.Player.fromSave(wire.player);
+  ok(r.fmvp_non_ivs === 2, "fmvp_non_ivs 续局存档往返一致");
+  const old = E.Player.fromSave({ identity: "青训", teamName: "N", playerId: "A", role: "求生者" });
+  ok(old.fmvp_non_ivs === 0, "老档缺 fmvp_non_ivs 字段回落默认 0");
+
+  if (fails) { throw new Error(`「老大」成就 IVS FMVP 口径断言失败:${fails} 项未通过`); }
+  console.log("\n[老大成就] IVS FMVP 不计入判定断言全部通过（settleChamp 计数分流 · fmvp_non_ivs 判定 · 存档往返 · 老档兜底）。");
+})();

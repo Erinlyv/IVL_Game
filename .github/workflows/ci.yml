@@ -8,6 +8,8 @@ on:
 
 # 纯静态前端、零运行时依赖：CI 仅在 Node 下跑自测脚本。
 # _uitest / _kotest / _gftest 依赖 jsdom（仅测试期），按需临时安装、不写入仓库。
+# 注：_strategyplay.js 是本地攻略实测实验（jsdom 全生涯驱动、无平衡断言、约 2.5 min/生涯），
+#     不纳入 CI 门禁；崩溃回归已由 _uitest 覆盖。需要时本地手动跑：node _strategyplay.js [N]。
 jobs:
   test:
     name: 自测脚本（冒烟 / UI / KO / 冠亚决赛）
