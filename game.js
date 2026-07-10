@@ -2240,7 +2240,7 @@ function warCardHtml(rec, isForced) {
           <div class="sc-sechead between"><div class="left"><span class="bar"></span><h3>已达成就</h3></div><div class="prog">本档解锁 <b>${rec.achs.length}</b> / ${allA}</div></div>
           <div class="chips">${chips}</div>
         </div>
-        <div class="sc-foot"><span class="tip">📸 截图保存这张战报卡，晒到同人圈吧！</span><span class="sc-date">${rec.date} · #IVL模拟器 v5.0</span></div>
+        <div class="sc-foot"><span class="tip">📸 截图保存这张战报卡，晒到同人圈吧！</span><span class="sc-date">${rec.date} · #IVL模拟器 v5.1</span></div>
       </div>
     </div>`;
 }
@@ -2258,7 +2258,7 @@ function warCardText(rec) {
   ];
   if (rec.spotlights.length) lines.push(`名场面：${rec.spotlights.join("、")}`);
   lines.push(`解锁成就（${rec.achs.length}）：${rec.achs.join("、") || "无"}`);
-  lines.push(`#IVL模拟器 v5.0`);
+  lines.push(`#IVL模拟器 v5.1`);
   return lines.join("\n");
 }
 
@@ -2453,7 +2453,7 @@ function renderShareCanvas(rec, qrImg) {
   ctx.font = `600 14px ${FB}`; ctx.fillStyle = "#cfd6e6";
   ctx.fillText("扫码体验 · IVL 模拟器", P, y + 6);
   ctx.font = `400 12px ${FB}`; ctx.fillStyle = "#7c89a3";
-  ctx.fillText(`${rec.date} · #IVL模拟器 v5.0`, P, y + 30);
+  ctx.fillText(`${rec.date} · #IVL模拟器 v5.1`, P, y + 30);
   ctx.font = `400 11px ${FB}`; ctx.fillStyle = "#5d6884";
   ctx.fillText("长按图片保存到相册分享", P, y + 52);
   y += qrS + 24;
@@ -3535,7 +3535,7 @@ function runKnockoutScreen(spec) {
       node._cause = res.win
         ? `冠亚决赛 ${node.score} 力克 ${spec.teams[opp].name}，捧起奖杯！`
         : `冠亚决赛 ${node.score} 惜败 ${spec.teams[opp].name}，屈居亚军。`;
-      const spot = E.rollSpotlight(P, { win: res.win, abnormal: res.abnormal, stage: spec.stageOf(key), isKO: true, isFinal: true });
+      const spot = E.rollSpotlight(P, { win: res.win, abnormal: res.abnormal, stage: spec.stageOf(key), isKO: true, isFinal: true, overtime: !!res.overtime });
       phase = 'result'; renderSide(); renderBracket(); rafLinks();
       const afterClash = () => { if (idx >= spec.order.length - 1) scheduleReport(); };
       if (spot) {
@@ -4211,7 +4211,7 @@ function runGrandFinals(cfg) {
       home: null, globalBuffs: [], pendingMod: null,
       coin: { p: null, o: null }, stateDice: [],
       myScore: [0, 0], allyScore: [0, 0], finalWin: null,
-      lastOwnTier: null, rollCtl: null,
+      lastOwnTier: null, rollCtl: null, wentOvertime: false,
     };
     const myLabel = S.camp === 'surv' ? '求生局' : '监管局';
     const allyLabel = S.camp === 'surv' ? '监管局' : '求生局';
@@ -4582,7 +4582,7 @@ function runGrandFinals(cfg) {
       const abnormal = S.lastOwnTier === 'fumble';
       const el = gq('gfOverlay'); if (el) el.remove();
       document.removeEventListener('keydown', onKey);
-      resolve({ win: !!S.finalWin, myScore: S.myScore.slice(), allyScore: S.allyScore.slice(), fmvpIsPlayer, abnormal });
+      resolve({ win: !!S.finalWin, myScore: S.myScore.slice(), allyScore: S.allyScore.slice(), fmvpIsPlayer, abnormal, overtime: !!S.wentOvertime });
     }
 
     /* --- 行动按钮分发 --- */
@@ -4596,7 +4596,7 @@ function runGrandFinals(cfg) {
       else if (P0 === 'play') { const oc = gq('gf-outcome'); if (oc && oc.classList.contains('show')) render(); else doPlay(); }
       else if (P0 === 'playDone') { S.phase = 'half'; render(); }
       else if (P0 === 'half') { const oc = gq('gf-outcome'); if (oc && oc.classList.contains('show')) { S.phase = 'tally'; render(); } else doHalf(); }
-      else if (P0 === 'tally') { if (S.finalWin === null) { S.phase = 'ot1'; render(); } else finishAndResolve(); }
+      else if (P0 === 'tally') { if (S.finalWin === null) { S.phase = 'ot1'; S.wentOvertime = true; render(); } else finishAndResolve(); }
       else if (P0 === 'ot1') { doOt1(); }
       else if (P0 === 'ot1done') { S.phase = 'ot2'; render(); }
       else if (P0 === 'ot2') { doOt2(); }
