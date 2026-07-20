@@ -543,7 +543,9 @@ function applyTraining(p, proj, intensity, year) {
     p.money += Math.round(clamp(CONFIG.STREAM_MONEY_MIN + p.pop * CONFIG.STREAM_MONEY_PER_POP,
                      CONFIG.STREAM_MONEY_MIN, CONFIG.STREAM_MONEY_MAX));
   }
-  p.stamina = Math.min(p.stamina_max, p.stamina - t.cost * sm);
+  // 休息固定回复 40 体力，不受训练强度影响。
+  const staminaDelta = proj === "休息" ? -t.cost : -t.cost * sm;
+  p.stamina = Math.min(p.stamina_max, p.stamina + staminaDelta);
   p._clamp();
 }
 /* 直播排位资金预估（展示用）：与 applyTraining 同口径。 */
@@ -1606,4 +1608,3 @@ window.IVL = {
   VERSION_P, VERSION_EVENTS, rollVersion, applyVersionEffect, clearVersion,
   buildTeamMeta, sampleTeamForm, sampleTeamWins, teamBaseStrength,
 };
-

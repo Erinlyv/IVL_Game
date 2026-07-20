@@ -129,8 +129,34 @@
 #cc .modal .sum b { color: var(--fg); }
 
 @media (max-width: 760px) {
+  #cc .app { padding: 0 14px 28px; }
+  #cc .hero { padding: 26px 0 16px; }
+  #cc .hero .crest { width: 48px; height: 48px; margin-bottom: 12px; border-radius: 14px; font-size: 17px; }
+  #cc .hero .ey {
+    display: block;
+    width: min(100%, 300px);
+    margin: 0 auto;
+    text-align: center;
+    font-size: 11px;
+    letter-spacing: 2.4px;
+    line-height: 1.35;
+    white-space: nowrap;
+  }
+  #cc .hero h1 { font-size: 24px; margin: 8px 0 6px; }
+  #cc .hero p { font-size: 13px; line-height: 1.55; max-width: 300px; }
+  #cc .track { gap: 5px; margin: 15px 0 2px; }
+  #cc .track .p { gap: 5px; font-size: 11px; }
+  #cc .track .p .n { width: 22px; height: 22px; font-size: 11px; }
+  #cc .track .sep { width: 10px; }
   #cc .fieldrow { grid-template-columns: 1fr; }
   #cc .opts.two { grid-template-columns: 1fr; }
   #cc .attrs, #cc .attrextra { grid-template-columns: 1fr; }
-  #cc .card { padding: 24px 20px; }
+  #cc .card { margin-top: 14px; padding: 20px 16px; border-radius: 18px; }
+  #cc .card .ch { justify-content: center; text-align: center; }
+  #cc .card .ch .bar { height: 18px; }
+  #cc .card .ch h2 { font-size: 18px; }
+  #cc .card .cguide { margin: 0 0 16px; text-align: center; font-size: 13px; }
+  #cc .foot { gap: 10px; margin-top: 18px; }
+  #cc .foot .tip { display: none; }
+  #cc .btn-back, #cc .btn-go { flex: 1; padding: 12px 10px; min-height: 44px; }
 }

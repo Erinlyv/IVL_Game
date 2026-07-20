@@ -23,6 +23,16 @@ jobs:
         with:
           node-version: '20'
 
+      - name: JS 语法检查
+        run: |
+          node --check engine.js
+          node --check game.js
+          node --check chargen.js
+          node --check _smoketest.js
+          node --check _uitest.js
+          node --check _kotest.js
+          node --check _gftest.js
+
       - name: 安装测试依赖（jsdom，仅测试期）
         run: npm install --no-save jsdom
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>IVL 模拟器 · v5.1</title>
+  <title>IVL 模拟器 · v5.2</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <!-- v4.2 修复（移动端打不开）：Google Fonts 在国内/微信内置浏览器常被墙或超时，
@@ -115,7 +115,7 @@
         </button>
       </div>
     </div>
-    <div class="ver">IVL SIMULATOR · v5.1</div>
+    <div class="ver">IVL SIMULATOR · v5.2</div>
   </div>
 
   <div class="app">
@@ -134,6 +134,13 @@
       <aside class="sidebar">
         <div id="hud" class="hud"></div>
         <div class="logwrap">
+          <button class="logtoggle" id="logToggle" type="button" aria-expanded="false" aria-controls="log">
+            <span class="logtoggle-main">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6h14"/><path d="M5 12h10"/><path d="M5 18h7"/></svg>
+              <span>事件流水</span>
+            </span>
+            <span class="logtoggle-count" id="logCount">0</span>
+          </button>
           <div class="logtitle">事件流水</div>
           <div id="log" class="log"></div>
         </div>
