@@ -113,6 +113,21 @@ async function say(title, body, cont = "继续", sub) {
   await present({ title, sub, body, choices: [{ label: cont, cls: "primary" }] });
 }
 async function choose(title, body, choices, sub) { return present({ title, sub, body, choices }); }
+function trainingResultPopup(title, body) {
+  return new Promise((resolve) => {
+    const m = main();
+    m.innerHTML = `
+      <div class="panel-head train-result-head">
+        <h2>${title}</h2>
+      </div>
+      <div class="panel-body">${body}</div>
+      <div class="choices"><button class="choice primary" id="trainResultClose"><span class="cl">关闭</span></button></div>`;
+    const done = () => resolve();
+    $("#trainResultClose").onclick = done;
+    $("#trainResultClose").focus();
+    m.scrollTop = 0;
+  });
+}
 
 function pushLog(text, cls = "") {
   logLines.unshift({ text, cls, t: `Y${curYear}` });
@@ -123,7 +138,33 @@ function renderLog() {
   const el = $("#log");
   if (!el) return;
   el.innerHTML = logLines.map(l => `<div class="logline ${l.cls}"><span class="tag">${l.t}</span>${l.text}</div>`).join("");
+  const count = $("#logCount");
+  if (count) count.textContent = String(logLines.length);
 }
+
+function initLogDrawer() {
+  const wrap = document.querySelector(".logwrap");
+  const btn = $("#logToggle");
+  if (!wrap || !btn) return;
+  const setOpen = (open) => {
+    wrap.classList.toggle("open", open);
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  };
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    setOpen(!wrap.classList.contains("open"));
+  });
+  wrap.addEventListener("click", (e) => {
+    if (e.target === wrap) setOpen(false);
+  });
+  document.addEventListener("click", (e) => {
+    if (wrap.classList.contains("open") && !wrap.contains(e.target)) setOpen(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") setOpen(false);
+  });
+}
+initLogDrawer();
 
 /* ------------------------------- HUD ----------------------------------- */
 function bar(label, val, color, pv) {
@@ -204,7 +245,7 @@ function renderHUD() {
     <div class="hud-id">
       <div class="avatar">${(P.name || "?").slice(0, 1)}</div>
       <div>
-        <div class="pname">${P.name} <span class="pos">${P.role}${P.positionName ? "·" + P.positionName : ""}${P.identity === "人皇" ? "·" + kingTitle(P.role) : ""}</span></div>
+        <div class="pname">${P.name} <span class="pos">${P.role}${P.positionName ? "·" + P.positionName : ""}</span></div>
         <div class="pmeta">${idShort(P)} · ${curAge}岁 · 第 ${curYear}/7 赛年</div>
         <div class="pstage">阶段：${curStage}</div>
       </div>
@@ -515,19 +556,22 @@ let curIntensity = "正常";
 // v4.0：把当前强度下的效果与消耗比例直接列进选项（《demov3.0feedback·训练》）。
 function fmtN(n) { const r = Math.round(n * 10) / 10; return Number.isInteger(r) ? "" + r : r.toFixed(1); }
 function trainEffectDesc(proj, intensity) {
-  // demov4.1feedback·训练：基础数值始终按「正常」展示，切换强度仅追加（+20%）/（−20%）标注，
-  // 实际成长口径（强度倍率 + 年龄衰减）由 engine.applyTraining 内部结算，展示不再随强度缩放。
+  // 按钮只展示收益方向；实际收益在训练结果弹窗里按强度、年龄衰减、软上限等真实结算展示。
   const t = E.CONFIG.TRAIN[proj];
+  const [, staminaMult] = E.CONFIG.INTENSITY[intensity];
   const pct = intensity === "高强度" ? "（+20%）" : (intensity === "休养" ? "（−20%）" : "");
   const parts = [];
-  if (t.tech) parts.push(`技术+${fmtN(t.tech)}`);
-  if (t.tac) parts.push(`战术+${fmtN(t.tac)}`);
-  if (t.phys) parts.push(`体能+${fmtN(t.phys)}`);
-  if (t.stab) parts.push(`稳定+${fmtN(t.stab)}`);
-  if (t.pop) parts.push(`人气+${fmtN(t.pop)}`);
-  if (t.moneyByPop) parts.push(`资金+${fmtN(E.streamMoneyGain(P))}`);
-  if (proj === "休息") { parts.push(`体力+${fmtN(-t.cost)}`); return parts.join("，"); }
-  parts.push(`体力-${fmtN(t.cost)}`);
+  if (t.tech) parts.push("技术+");
+  if (t.tac) parts.push("战术+");
+  if (t.phys) parts.push("体能+");
+  if (t.stab) parts.push("稳定+");
+  if (t.pop) parts.push("人气+");
+  if (t.moneyByPop) parts.push("资金+");
+  if (proj === "休息") {
+    parts.push(`体力+${fmtN(-t.cost)}`);
+    return parts.join("，");
+  }
+  parts.push(`体力-${fmtN(t.cost * staminaMult)}`);
   return parts.join("，") + pct;
 }
 
@@ -542,10 +586,12 @@ function trainProjsHtml() {
 }
 function trainBody() {
   return `
-    <div class="intensity">强度：
-      ${["休养", "正常", "高强度"].map(i => `<button class="intbtn ${i === curIntensity ? "on" : ""}" data-int="${i}">${i}</button>`).join("")}
-      <span class="int-hint">${curIntensity === "高强度" ? "效果/消耗整体 +20%" : (curIntensity === "休养" ? "效果/消耗整体 −20%" : "标准强度")}${P.rest_active ? " ·休整收益×0.8" : ""}</span></div>
-    <div class="trainprojs">${trainProjsHtml()}</div>`;
+    <div class="train-stack">
+      <div class="intensity">强度：
+        ${["休养", "正常", "高强度"].map(i => `<button class="intbtn ${i === curIntensity ? "on" : ""}" data-int="${i}">${i}</button>`).join("")}
+        <span class="int-hint">${curIntensity === "高强度" ? "效果/消耗整体 +20%" : (curIntensity === "休养" ? "效果/消耗整体 −20%" : "标准强度")}${P.rest_active ? " ·休整收益×0.8" : ""}</span></div>
+      <div class="trainprojs">${trainProjsHtml()}</div>
+    </div>`;
 }
 // v4.2 修复（demov4.1feedback4·优化训练期体能）：训练回合期间注册的面板刷新回调。
 // 用道具补体力后由 useItem 调用，使因体力不足而灰掉的训练项目立即重新可点，无需切换强度。
@@ -657,6 +703,7 @@ async function trainingPeriod(n, periodLabel) {
     if (proj !== "休息" && P.stamina < cost) { proj = "休息"; intensity = "正常"; }
     E.applyTraining(P, proj, intensity, curYear);
     renderHUD();
+    await trainingResultPopup(`训练结果 · ${proj}`, `<p>${trainingDeltaText(before)}</p>`);
     if (proj === "休息") { pushLog(`训练${i}：休息，体力回复。`); continue; }
     trained = true;
     pushLog(`训练${i}：${proj}（${intensity}）${diffAttrs(before)}`);
@@ -738,36 +785,38 @@ function applyPurchase(it) {
 
 async function shopPhase() {
   setStage("年度商店");
+  if (typeof document !== "undefined" && document.body) document.body.classList.add("shop-focus");
   // 当年生效的道具/稀缺效果于赛年开始（进商店）随库存刷新一并重置（道具不跨年）。
-  P.has_wrist = false; P.has_checkup = false; P.redo_token = 0; P.has_seal = false; P.serum_active = false;
-  P.stamina = P.stamina_max;            // v4.0：进商店（开局/每年）体力直接给满
-  renderHUD();
-  const stock = E.buildShopStock();
-  // demov4.2feedback《转会优化·自由转会》：资金超过 30000 且尚未拥有合同时，商店刷出「你的合同」。
-  if (P.money > 30000 && !P.own_contract) {
-    stock.push({
-      name: "你的合同", price: 30000, qty: 1, left: 1, kind: "contract", group: "自由身",
-      desc: "买断自己的合同：合同有效期 2 年，期内不再被动卖走；并获得 1 次自由转会额度（转会期可主动接触 9 支大陆战队，试训成败判定，被拒 3 次退役）",
-      tag: "把命运攥回自己手里 —— 从此，去留由你说了算。",
-    });
-  }
-  const hasRare = stock.some(it => it.rare);
-  const groups = ["自由身", "体力恢复", "伤病防护", "临场爆发", "属性成长", "舆论处理", "极其稀缺"];
-  const risk = injuryRiskLine();
-  const cart = new Map();                // stock 下标 -> 数量
-  shopPreview = null;
-  const cartQty = (i) => cart.get(i) || 0;
-  const cartTotal = () => { let s = 0; for (const [i, q] of cart) s += stock[i].price * q; return s; };
-  const updatePreview = () => {
-    const pv = { tech: 0, tac: 0, phys: 0, stab: 0 }; let any = false;
-    for (const [i, q] of cart) {
-      const it = stock[i];
-      if (it.kind === "attr") for (const [k, v] of Object.entries(it.eff)) { if (pv[k] != null) { pv[k] += v * q; any = true; } }
-    }
-    shopPreview = any ? pv : null;
+  try {
+    P.has_wrist = false; P.has_checkup = false; P.redo_token = 0; P.has_seal = false; P.serum_active = false;
+    P.stamina = P.stamina_max;            // v4.0：进商店（开局/每年）体力直接给满
     renderHUD();
-  };
-  await new Promise((resolve) => {
+    const stock = E.buildShopStock();
+    // demov4.2feedback《转会优化·自由转会》：资金超过 30000 且尚未拥有合同时，商店刷出「你的合同」。
+    if (P.money > 30000 && !P.own_contract) {
+      stock.push({
+        name: "你的合同", price: 30000, qty: 1, left: 1, kind: "contract", group: "自由身",
+        desc: "买断自己的合同：合同有效期 2 年，期内不再被动卖走；并获得 1 次自由转会额度（转会期可主动接触 9 支大陆战队，试训成败判定，被拒 3 次退役）",
+        tag: "把命运攥回自己手里 —— 从此，去留由你说了算。",
+      });
+    }
+    const hasRare = stock.some(it => it.rare);
+    const groups = ["自由身", "体力恢复", "伤病防护", "临场爆发", "属性成长", "舆论处理", "极其稀缺"];
+    const risk = injuryRiskLine();
+    const cart = new Map();                // stock 下标 -> 数量
+    shopPreview = null;
+    const cartQty = (i) => cart.get(i) || 0;
+    const cartTotal = () => { let s = 0; for (const [i, q] of cart) s += stock[i].price * q; return s; };
+    const updatePreview = () => {
+      const pv = { tech: 0, tac: 0, phys: 0, stab: 0 }; let any = false;
+      for (const [i, q] of cart) {
+        const it = stock[i];
+        if (it.kind === "attr") for (const [k, v] of Object.entries(it.eff)) { if (pv[k] != null) { pv[k] += v * q; any = true; } }
+      }
+      shopPreview = any ? pv : null;
+      renderHUD();
+    };
+    await new Promise((resolve) => {
     const addCart = (i) => { const it = stock[i]; if (it.left - cartQty(i) <= 0) return; if (P.money < cartTotal() + it.price) return; cart.set(i, cartQty(i) + 1); updatePreview(); render(); };
     const decCart = (i) => { const q = cartQty(i); if (q <= 1) cart.delete(i); else cart.set(i, q - 1); updatePreview(); render(); };
     const checkout = () => { for (const [i, q] of cart) for (let k = 0; k < q; k++) applyPurchase(stock[i]); cart.clear(); shopPreview = null; renderHUD(); resolve(); };
@@ -826,8 +875,11 @@ async function shopPhase() {
       $("#shopCheckout").onclick = () => { if (canProceed) checkout(); };
     };
     render();
-  });
-  shopPreview = null; renderHUD();
+    });
+  } finally {
+    if (typeof document !== "undefined" && document.body) document.body.classList.remove("shop-focus");
+    shopPreview = null; renderHUD();
+  }
 }
 
 /* ============================== 比赛 ================================== */
@@ -999,7 +1051,7 @@ function rsOverlayHTML(kind) {
       <span class="logo">IVL</span>
       <div>
         <div class="ttl">${kind}季赛 · <b>常规赛</b></div>
-        <div class="sub">REGULAR SEASON · 9 场 BO3 · 前 6 进季后赛</div>
+        <div class="sub">9 场 BO3 · 前 6 晋级</div>
       </div>
     </div>
     <div class="spacer"></div>
@@ -1009,7 +1061,7 @@ function rsOverlayHTML(kind) {
     </button>
     <button class="tbtn" id="rs-attrBtn">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.6 6.6L21.5 9l-5.2 4.4L18 21l-6-3.6L6 21l1.7-7.6L2.5 9l6.9-.4z"/></svg>
-      个人属性
+      属性
     </button>
     <div class="idchip"><span class="dot"></span><div><div class="nm" id="rs-idTeam"></div><div class="rk" id="rs-idRole"></div></div></div>
   </div>
@@ -1017,7 +1069,7 @@ function rsOverlayHTML(kind) {
   <div class="layout">
     <section class="arena">
       <div class="arena-head">
-        <div><div class="lab">LIVE · 比赛进行中</div><h2>本队对战 · 常规赛</h2></div>
+        <div><div class="lab">比赛中</div><h2>常规赛对阵</h2></div>
         <div class="rec">战绩 <b id="rs-recText">0 - 0</b><br><span class="mono" id="rs-progText" style="color:var(--dim)">MATCH 0 / 9</span></div>
       </div>
       <div class="progress"><div class="bar"><i id="rs-progBar"></i></div></div>
@@ -1040,14 +1092,14 @@ function rsOverlayHTML(kind) {
           <div class="vteam" id="rs-vOp"><div class="crest"></div><div class="nm"></div></div>
         </div>
         <div class="buffrow" id="rs-buffRow"></div>
-        <div class="mstatus" id="rs-mStatus">点击「开始本轮」结算这场 BO3 · 也可先在背包里使用加成道具</div>
+        <div class="mstatus" id="rs-mStatus">开赛前可先使用背包道具</div>
       </div>
       <div class="actions"><div class="inner">
         <button class="bigbtn" id="rs-continueBtn" style="display:none">进入季后赛 →</button>
         <button class="bigbtn" id="rs-actBtn">开始第 1 轮 →</button>
         <button class="bigbtn skip" id="rs-skipBtn">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
-          一键跳过 · 直达战报
+          跳过余下
         </button>
         <div class="hint" id="rs-actHint"></div>
       </div></div>
@@ -1100,9 +1152,9 @@ function runRegularSeasonScreen(kind) {
     const host = (typeof document !== 'undefined' && document.body) ? document.body : null;
     // 无 DOM（极端环境）：退化为无头结算，保证引擎口径不变。
     const opps0 = E.shuffle([...(gameTeams ? gameTeams.domestic : ["InStar"])]).slice(0, 9);
+    const opps = opps0;
     if (!host) { resolveHeadless(); return; }
 
-    const opps = opps0;
     const rq = (id) => document.getElementById('rs-' + id);
     const raf = (cb) => (typeof requestAnimationFrame === 'function') ? requestAnimationFrame(cb) : setTimeout(cb, 0);
 
@@ -1132,6 +1184,41 @@ function runRegularSeasonScreen(kind) {
       if (r.win) { return m >= 8 ? { score: '2 : 0', gd: 2 } : { score: '2 : 1', gd: 1 }; }
       return m <= -8 ? { score: '0 : 2', gd: -2 } : { score: '1 : 2', gd: -1 };
     }
+    function makeLeagueRows() {
+      const rows = [{ name: P.teamName, mono: koMono(P.teamName), color: KO_HUNTER, player: true, w: 0, l: 0, gd: 0 }];
+      opps.forEach((nm) => rows.push({ name: nm, mono: koMono(nm), color: teamColor(nm), player: false, w: 0, l: 0, gd: 0 }));
+      return rows;
+    }
+    function applyLeagueResult(byName, aName, bName, aWin, gdAbs) {
+      const a = byName[aName], b = byName[bName];
+      if (!a || !b) return;
+      const gd = Math.max(1, Math.abs(gdAbs || 1));
+      if (aWin) { a.w++; b.l++; a.gd += gd; b.gd -= gd; }
+      else { b.w++; a.l++; b.gd += gd; a.gd -= gd; }
+    }
+    function simulateNpcResult(aName, bName) {
+      const fa = E.sampleTeamForm(gameTeams && gameTeams.meta, aName);
+      const fb = E.sampleTeamForm(gameTeams && gameTeams.meta, bName);
+      const diff = Math.abs(fa - fb);
+      return { aWin: fa >= fb, gd: diff >= 8 ? 2 : 1 };
+    }
+    function buildLeagueStandings(playerResults) {
+      const rows = makeLeagueRows();
+      const byName = {};
+      rows.forEach((r) => { byName[r.name] = r; });
+      playerResults.forEach((r) => {
+        if (!r) return;
+        applyLeagueResult(byName, P.teamName, r.oppName, !!r.win, r.gd);
+      });
+      for (let i = 0; i < opps.length; i++) {
+        for (let j = i + 1; j < opps.length; j++) {
+          const r = simulateNpcResult(opps[i], opps[j]);
+          applyLeagueResult(byName, opps[i], opps[j], r.aWin, r.gd);
+        }
+      }
+      rows.sort((a, b) => b.w - a.w || b.gd - a.gd || (a.player ? -1 : b.player ? 1 : 0));
+      return rows;
+    }
 
     // ---- 渲染 ----
     function fillVersus(i, resolved) {
@@ -1151,7 +1238,7 @@ function runRegularSeasonScreen(kind) {
         op.className = 'vteam ' + (r.win ? 'lose' : 'win');
         rq('mStatus').textContent = r.win ? '本轮取胜' : '本轮失利';
       } else {
-        rq('mStatus').textContent = '点击「开始本轮」结算这场 BO3 · 也可先在背包里使用加成道具';
+        rq('mStatus').textContent = '开赛前可先使用背包道具';
       }
     }
     function updateProg() {
@@ -1260,18 +1347,9 @@ function runRegularSeasonScreen(kind) {
 
     // ---- 赛季结束 ----
     function computeStandings() {
-      const losses = 9 - wins;
-      const rows = [{ name: P.teamName, mono: koMono(P.teamName), color: KO_HUNTER, player: true, w: wins, l: losses, gd: gdSum }];
-      // demov4.2feedback《NPC优化·战队风格》：NPC 胜场由战队实力 + 稳定性档采样（稳定队更集中、民间队摆动大），
-      // 不再纯随机，从而让季后赛种子严格贴合常规赛排名。
-      opps.forEach((nm) => {
-        const w = E.sampleTeamWins(gameTeams && gameTeams.meta, nm);
-        const l = 9 - w, gd = Math.round((w - l) * 1.4 + E.randint(-2, 2));
-        rows.push({ name: nm, mono: koMono(nm), color: teamColor(nm), w, l, gd });
-      });
-      rows.sort((a, b) => b.w - a.w || b.gd - a.gd || (a.player ? -1 : b.player ? 1 : 0));
-      standings = rows;
-      rank = rows.findIndex(r => r.player) + 1;
+      // 10 队真实单循环：玩家 9 场用真实赛果，NPC 内战后台逐场模拟，战绩总量守恒。
+      standings = buildLeagueStandings(results);
+      rank = standings.findIndex(r => r.player) + 1;
       inPlayoff = rank <= 6;
     }
     function appendVerdict() {
@@ -1405,15 +1483,14 @@ function runRegularSeasonScreen(kind) {
 
     // 无 DOM 时的无头退化：跑完真实结算并直接 resolve。
     async function resolveHeadless() {
-      let w = 0, gd = 0;
+      let w = 0; const headlessResults = [];
       for (let g = 0; g < 9; g++) {
         const r = await playMatch("常规", E.OPP_POP["常规"], E.WIN_POP["常规"], { oppName: opps0[g] });
         if (r.win) w++;
-        const m = r.team - r.opp; gd += r.win ? (m >= 8 ? 2 : 1) : (m <= -8 ? -2 : -1);
+        const s = synth(r);
+        headlessResults.push({ oppName: opps0[g], win: r.win, score: s.score, gd: s.gd });
       }
-      const rows = [{ name: P.teamName, w, player: true }];
-      opps0.forEach((nm) => rows.push({ name: nm, w: E.sampleTeamWins(gameTeams && gameTeams.meta, nm), player: false }));
-      rows.sort((a, b) => b.w - a.w || (a.player ? -1 : b.player ? 1 : 0));
+      const rows = buildLeagueStandings(headlessResults);
       const rk = rows.findIndex(r => r.player) + 1;
       resolve({ rank: rk, inPlayoff: rk <= 6, wins: w, standings: rows.map(r => r.name) });
     }
@@ -1936,12 +2013,27 @@ async function offerSpecial(name) {
 }
 
 /* ============================== 主流程 ================================ */
-function snapshotAttrs() { return { tech: P.tech, tac: P.tac, phys: P.phys, stab: P.stab, pop: P.pop, money: P.money }; }
+function snapshotAttrs() { return { tech: P.tech, tac: P.tac, phys: P.phys, stab: P.stab, pop: P.pop, money: P.money, stamina: P.stamina }; }
 function diffAttrs(b) {
   const parts = []; const map = { tech: "技", tac: "战", phys: "体", stab: "稳" };
   for (const k of ["tech", "tac", "phys", "stab"]) { const d = P[k] - b[k]; if (Math.abs(d) > 0.05) parts.push(`${map[k]}${d > 0 ? "+" : ""}${d.toFixed(1)}`); }
   const dp = P.pop - b.pop; if (Math.abs(dp) > 0.01) parts.push(`人气${dp > 0 ? "+" : ""}${dp.toFixed(1)}`);
   return parts.length ? "→ " + parts.join(" ") : "";
+}
+function trainingDeltaText(b) {
+  const parts = [];
+  const attrs = { tech: "技术", tac: "战术", phys: "体能", stab: "稳定" };
+  for (const k of ["tech", "tac", "phys", "stab"]) {
+    const d = P[k] - b[k];
+    if (Math.abs(d) > 0.05) parts.push(`${attrs[k]}${d > 0 ? "+" : ""}${fmtN(d)}`);
+  }
+  const dp = P.pop - b.pop;
+  if (Math.abs(dp) > 0.01) parts.push(`人气${dp > 0 ? "+" : ""}${fmtN(dp)}`);
+  const dm = P.money - b.money;
+  if (Math.abs(dm) > 0.01) parts.push(`资金${dm > 0 ? "+" : ""}${fmtN(dm)}`);
+  const ds = P.stamina - b.stamina;
+  if (Math.abs(ds) > 0.05) parts.push(`体力${ds > 0 ? "+" : ""}${fmtN(ds)}`);
+  return parts.length ? parts.join("，") : "无明显数值变化";
 }
 
 async function yearIntro() {
@@ -2009,7 +2101,12 @@ async function yearSettle() {
         ${curYear < 7 ? "" : `<p class="ok">7 个赛年走到了尽头……</p>`}
       </div>
     </div>`;
-  await say(`第${curYear}赛年 结算`, statBody, curYear < 7 ? `进入第${curYear + 1}赛年` : "迎接结局", `SEASON ${curYear} REVIEW`);
+  if (typeof document !== "undefined" && document.body) document.body.classList.add("year-settle-focus");
+  try {
+    await say(`第${curYear}赛年 结算`, statBody, curYear < 7 ? `进入第${curYear + 1}赛年` : "迎接结局", `SEASON ${curYear} REVIEW`);
+  } finally {
+    if (typeof document !== "undefined" && document.body) document.body.classList.remove("year-settle-focus");
+  }
 }
 
 async function career(startYear = 1) {
@@ -2240,7 +2337,7 @@ function warCardHtml(rec, isForced) {
           <div class="sc-sechead between"><div class="left"><span class="bar"></span><h3>已达成就</h3></div><div class="prog">本档解锁 <b>${rec.achs.length}</b> / ${allA}</div></div>
           <div class="chips">${chips}</div>
         </div>
-        <div class="sc-foot"><span class="tip">📸 截图保存这张战报卡，晒到同人圈吧！</span><span class="sc-date">${rec.date} · #IVL模拟器 v5.1</span></div>
+        <div class="sc-foot"><span class="tip">📸 截图保存这张战报卡，晒到同人圈吧！</span><span class="sc-date">${rec.date} · #IVL模拟器 v5.2</span></div>
       </div>
     </div>`;
 }
@@ -2258,7 +2355,7 @@ function warCardText(rec) {
   ];
   if (rec.spotlights.length) lines.push(`名场面：${rec.spotlights.join("、")}`);
   lines.push(`解锁成就（${rec.achs.length}）：${rec.achs.join("、") || "无"}`);
-  lines.push(`#IVL模拟器 v5.1`);
+  lines.push(`#IVL模拟器 v5.2`);
   return lines.join("\n");
 }
 
@@ -2453,7 +2550,7 @@ function renderShareCanvas(rec, qrImg) {
   ctx.font = `600 14px ${FB}`; ctx.fillStyle = "#cfd6e6";
   ctx.fillText("扫码体验 · IVL 模拟器", P, y + 6);
   ctx.font = `400 12px ${FB}`; ctx.fillStyle = "#7c89a3";
-  ctx.fillText(`${rec.date} · #IVL模拟器 v5.1`, P, y + 30);
+  ctx.fillText(`${rec.date} · #IVL模拟器 v5.2`, P, y + 30);
   ctx.font = `400 11px ${FB}`; ctx.fillStyle = "#5d6884";
   ctx.fillText("长按图片保存到相册分享", P, y + 52);
   y += qrS + 24;
@@ -2724,11 +2821,14 @@ async function boot() {
         <p>欢迎来到《IVL模拟器》。你将扮演一名第五人格职业电竞选手征战赛场。</p>
         ${resumeLine}
         ${progress}
-        <p class="muted">本作品为第五人格赛事粉丝二创，为爱发电非盈利。本作品中涉及的角色行为、故事情节均为作者虚构或出于创作需要进行加工，不涉及对现实人物或事件的影射或指控，请勿对号入座，请勿贴脸。</p>
-        <p class="muted">请尊重劳动成果，禁止抄袭、盗用，转载请标明作者。若有任何不妥之处或任何疑问，请xhs私信作者。</p>
-        <p class="muted">请大家多玩第五人格，多看第五人格赛事。</p>
-        <p class="muted">感谢各位内测玩家对这个小游戏开发的宝贵建议，感谢吐司提出的随机投点玩法，感谢爱世界对游戏各项数值设定的帮助，感谢一只鱼对游戏体验的指导，感谢秃秃子作为资深赛事观众对游戏内容的建议，感谢贴吧和IVL模拟器体验群中大家的用心体验和反馈。</p>
-        <p class="muted">比赛有输赢，人生没有。每一位为梦想奋斗的人都值得尊重。</p>
+        <p class="muted">本作品为第五人格赛事粉丝二创，为爱发电非盈利；角色行为与故事情节均为虚构或创作加工，请勿对号入座。</p>
+        <details class="notice-more">
+          <summary>查看完整说明与致谢</summary>
+          <p class="muted">请尊重劳动成果，禁止抄袭、盗用，转载请标明作者。若有任何不妥之处或任何疑问，请xhs私信作者。</p>
+          <p class="muted">请大家多玩第五人格，多看第五人格赛事。</p>
+          <p class="muted">感谢各位内测玩家对这个小游戏开发的宝贵建议，感谢吐司提出的随机投点玩法，感谢爱世界对游戏各项数值设定的帮助，感谢一只鱼对游戏体验的指导，感谢秃秃子作为资深赛事观众对游戏内容的建议，感谢贴吧和IVL模拟器体验群中大家的用心体验和反馈。</p>
+          <p class="muted">比赛有输赢，人生没有。每一位为梦想奋斗的人都值得尊重。</p>
+        </details>
         <div class="author-sign">
           <div class="author-name">时唯</div>
           <div class="author-xhs">xhs号：9530174979</div>
@@ -3183,7 +3283,7 @@ function koOverlayHTML(spec) {
     </button>
     <button class="ko-bagbtn" id="ko-attrBtn" type="button">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.6 6.6L21.5 9l-5.2 4.4L18 21l-6-3.6L6 21l1.7-7.6L2.5 9l6.9-.4z"/></svg>
-      个人属性
+      属性
     </button>
     <div class="idchip"><span class="dot"></span>
       <div><div class="nm">${P.name}</div><div class="rk">${h.idRk}</div></div></div>

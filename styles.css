@@ -278,6 +278,7 @@ body {
   border: 1px solid var(--line); border-radius: var(--r-lg); padding: 13px 15px;
   box-shadow: 0 18px 44px rgba(0, 0, 0, .3);
 }
+.logtoggle { display: none; }
 .logtitle {
   font-family: "Sora", sans-serif; font-size: 11px; color: var(--gold); letter-spacing: 1.5px;
   margin-bottom: 9px; text-transform: uppercase;
@@ -307,6 +308,7 @@ body {
 .panel-head h2 { font-family: "Sora", sans-serif; font-size: 21px; font-weight: 700; margin-bottom: 5px; letter-spacing: .3px; }
 .panel-head .sub { color: var(--muted); font-size: 13px; }
 .panel-head .sub b { color: var(--gold2); font-family: "Sora", sans-serif; }
+.train-result-head { padding-right: 0; }
 .panel-body { font-size: 15px; }
 .panel-body p { margin-bottom: 10px; }
 .panel-body b { color: var(--gold2); font-weight: 600; }
@@ -320,6 +322,26 @@ body {
 .declaim-em { margin: 16px 0; padding: 12px 16px; border-left: 3px solid var(--gold2);
   background: var(--gold-soft); border-radius: var(--r-sm); color: var(--fg);
   font-weight: 600; font-size: 14px; line-height: 1.7; letter-spacing: .3px; }
+.notice-more {
+  margin: 10px 0 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, .025);
+  overflow: hidden;
+}
+.notice-more summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  color: var(--gold2);
+  cursor: pointer;
+  font-weight: 700;
+}
+.notice-more summary:focus-visible { outline: 2px solid var(--gold2); outline-offset: -3px; }
+.notice-more p { padding: 0 14px; }
+.notice-more p:first-of-type { padding-top: 10px; }
+.notice-more p:last-child { padding-bottom: 10px; }
 .ok { color: var(--ok); font-weight: 600; }
 .ko { color: var(--bad); font-weight: 600; }
 
@@ -389,19 +411,31 @@ body {
 .riskbar b { color: #fff; }
 
 /* -------------------------------- 训练 -------------------------------- */
-.intensity { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; font-size: 13px; color: var(--muted); }
+.train-stack { width: 100%; display: flex; flex-direction: column; gap: 11px; }
+.train-stack > .intensity,
+.train-stack > .trainprojs { width: 100%; box-sizing: border-box; }
+.intensity {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 0;
+  padding: 12px 14px; min-width: 0; font-size: 13px; color: var(--muted);
+  background: var(--bg2); border: 1px solid var(--line); border-radius: var(--r-md);
+}
 .intbtn { background: var(--surface2); border: 1px solid var(--line2); color: var(--fg); padding: 7px 15px; border-radius: var(--r-sm); cursor: pointer; transition: .16s ease; }
 .intbtn:hover { border-color: var(--gold2); }
 .intbtn:focus-visible { outline: 2px solid var(--gold2); outline-offset: 2px; }
 .intbtn.on { background: linear-gradient(135deg, var(--gold2), var(--gold)); color: #1a1205; border-color: var(--gold2); font-weight: 700; }
 .int-hint { margin-left: auto; color: var(--dim); }
 .trainprojs { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
-.trainproj { text-align: left; background: var(--surface2); border: 1px solid var(--line2); border-radius: var(--r-md); padding: 15px; cursor: pointer; color: var(--fg); transition: border-color .18s ease, background .18s ease, transform .18s ease; }
+.trainproj {
+  width: 100%; min-width: 0; box-sizing: border-box; text-align: left;
+  background: var(--surface2); border: 1px solid var(--line2); border-radius: var(--r-md);
+  padding: 15px; cursor: pointer; color: var(--fg);
+  transition: border-color .18s ease, background .18s ease, transform .18s ease;
+}
 .trainproj:hover:not(.disabled) { border-color: var(--gold2); background: var(--raise); transform: translateY(-1px); }
 .trainproj:focus-visible { outline: 2px solid var(--gold2); outline-offset: 2px; }
 .trainproj.disabled { opacity: .4; cursor: not-allowed; }
 .tp-name { display: block; font-family: "Sora", sans-serif; font-size: 16px; font-weight: 700; margin-bottom: 4px; }
-.tp-info { display: block; font-size: 12px; color: var(--muted); }
+.tp-info { display: block; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 .tp-need { display: inline-block; margin-top: 6px; font-size: 11px; color: var(--bad); }
 
 /* -------------------------------- 商店 -------------------------------- */
@@ -591,6 +625,71 @@ body {
   .app { padding: 16px 14px 48px; }
   .main { padding: 22px 18px; }
   .res { grid-template-columns: 1fr 1fr; }
+}
+
+/* 手机/窄屏单列时，事件流水始终收成底部按钮，避免夹在 HUD 和主内容之间。 */
+@media (max-width: 880px) {
+  .app { padding-bottom: calc(86px + env(safe-area-inset-bottom)); }
+  .logwrap {
+    position: fixed;
+    left: max(12px, env(safe-area-inset-left));
+    right: max(12px, env(safe-area-inset-right));
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    z-index: 70;
+    width: min(406px, calc(100vw - 24px));
+    margin: 0 auto;
+    padding: 0;
+    border-radius: 14px;
+    overflow: hidden;
+    background: rgba(19, 29, 49, .96);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 18px 46px rgba(0, 0, 0, .56);
+  }
+  .logtoggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    min-height: 52px;
+    padding: 0 14px;
+    color: var(--fg);
+    background: linear-gradient(135deg, rgba(29, 41, 66, .98), rgba(14, 22, 38, .98));
+    border: 0;
+    cursor: pointer;
+    font: 700 14px/1.2 "Noto Sans SC", -apple-system, "PingFang SC", sans-serif;
+  }
+  .logtoggle:focus-visible { outline: 2px solid var(--gold2); outline-offset: -3px; }
+  .logtoggle-main { display: inline-flex; align-items: center; gap: 9px; }
+  .logtoggle svg { width: 18px; height: 18px; color: var(--gold2); }
+  .logtoggle-count {
+    min-width: 28px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    padding: 0 8px;
+    border-radius: 999px;
+    background: var(--gold-soft);
+    border: 1px solid rgba(226, 181, 62, .3);
+    color: var(--gold2);
+    font-family: "Sora", sans-serif;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .logwrap .logtitle,
+  .logwrap .log {
+    display: none;
+  }
+  .logwrap.open .logtitle {
+    display: block;
+    margin: 12px 14px 8px;
+  }
+  .logwrap.open .log {
+    display: flex;
+    max-height: min(42dvh, 330px);
+    padding: 0 14px 14px;
+  }
+  .logline { font-size: 11.5px; line-height: 1.55; }
 }
 
 /* 减弱动效偏好 */
@@ -1077,6 +1176,22 @@ body {
   100%{transform:translateY(280px) rotate(540deg);opacity:0}}
 
 @media (max-width:1080px){
+  #koscreen .ko-top{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) repeat(2,minmax(72px,88px));
+    align-items:center;
+    gap:8px;
+    padding:max(12px,env(safe-area-inset-top)) 12px 10px;
+  }
+  #koscreen .ko-top .spacer{display:none}
+  #koscreen .brand{min-width:0;gap:10px}
+  #koscreen .brand .ttl{font-size:15px;line-height:1.35;letter-spacing:.4px}
+  #koscreen .brand .sub{margin-top:2px;font-size:11px;line-height:1.45;letter-spacing:1.6px;white-space:normal}
+  #koscreen .ko-bagbtn{width:100%;min-height:48px;justify-content:center;gap:6px;padding:8px;border-radius:14px;font-size:13px;line-height:1;white-space:nowrap}
+  #koscreen .ko-bagbtn svg{width:15px;height:15px;flex:none}
+  #koscreen .idchip{grid-column:1/-1;justify-self:stretch;min-height:44px;padding:8px 12px;border-radius:14px}
+  #koscreen .idchip .nm{font-size:13px;line-height:1.25}
+  #koscreen .idchip .rk{font-size:11px;line-height:1.35}
   #koscreen .ko-layout{ grid-template-columns:1fr; height:auto; overflow:auto }
   #koscreen{ overflow:auto }
   #koscreen .side{ border-right:none; border-bottom:1px solid var(--line) }
@@ -1088,7 +1203,7 @@ body {
  * 常规赛「转播台」整屏 overlay（复刻 UI设计/demo11-常规赛A-转播台.html）
  * 全部前缀作用域于 #rs-root，避免与正文样式（.crest/.toast/.modal 等）冲突。
  * ===========================================================================*/
-#rs-root{ position:fixed; inset:0; z-index:60; overflow:hidden; color:var(--fg);
+#rs-root{ position:fixed; inset:0; z-index:1200; overflow:hidden; color:var(--fg);
   font-family:'Noto Sans SC',-apple-system,'PingFang SC',sans-serif; -webkit-font-smoothing:antialiased;
   --hunter:#e85d9a; --hunter-soft:rgba(232,93,154,.16); --red:#c5354a; --red2:#e0506a; --win:#f5cf6a;
   --gold-soft:rgba(226,181,62,.13);
@@ -1310,6 +1425,22 @@ body {
 @media (max-width:1080px){
   #rs-root .layout{grid-template-columns:1fr;height:auto;overflow:auto}
   #rs-root{overflow:auto}
+  #rs-root .topbar{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) repeat(2,minmax(72px,88px));
+    align-items:center;
+    gap:8px;
+    padding:max(12px,env(safe-area-inset-top)) 12px 10px;
+  }
+  #rs-root .topbar .spacer{display:none}
+  #rs-root .brand{min-width:0;gap:10px}
+  #rs-root .brand .ttl{font-size:15px;line-height:1.35;letter-spacing:.4px}
+  #rs-root .brand .sub{margin-top:2px;font-size:11px;line-height:1.45;letter-spacing:1.6px;white-space:normal}
+  #rs-root .tbtn{width:100%;min-height:48px;justify-content:center;gap:6px;padding:8px;border-radius:14px;font-size:13px;line-height:1;white-space:nowrap}
+  #rs-root .tbtn svg{width:15px;height:15px;flex:none}
+  #rs-root .idchip{grid-column:1/-1;justify-self:stretch;min-height:44px;padding:8px 12px;border-radius:14px}
+  #rs-root .idchip .nm{font-size:13px;line-height:1.25}
+  #rs-root .idchip .rk{font-size:11px;line-height:1.35}
   #rs-root .reportcol{border-left:none;border-top:1px solid var(--line)}
   #rs-root .arena-body,#rs-root .feed{flex:none}
 }
@@ -1492,27 +1623,118 @@ body.settle-mode .choice{ text-align:center; align-items:center; min-width:260px
   /* —— 主容器 / 安全区 —— */
   .app {
     min-height: 100dvh;
-    padding: 12px max(12px, env(safe-area-inset-right)) calc(40px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+    width: min(100%, 430px);
+    margin: 0 auto;
+    padding: 10px max(12px, env(safe-area-inset-right)) calc(86px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+    --mobile-panel-w: 100%;
   }
 
   /* —— 顶栏 —— */
-  .topbar { gap: 8px; padding: 4px 0 12px; margin-bottom: 14px; }
-  .crest { width: 40px; height: 40px; border-radius: 11px; font-size: 15px; }
-  .logo { font-size: 20px; }
-  .tagline { font-size: 12px; width: 100%; }
+  .topbar { gap: 8px; padding: 4px 0 10px; margin-bottom: 10px; flex-wrap: nowrap; }
+  .brand { gap: 10px; min-width: 0; }
+  .brandtext { min-width: 0; }
+  .crest { width: 38px; height: 38px; border-radius: 10px; font-size: 14px; }
+  .logo { font-size: 18px; white-space: nowrap; }
+  .ey { font-size: 9px; letter-spacing: 1.8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 230px; }
+  .tagline { display: none; }
+
+  .layout { display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
+  .sidebar,
+  .stage {
+    width: var(--mobile-panel-w);
+    max-width: var(--mobile-panel-w);
+    margin-inline: auto;
+  }
+  .sidebar { gap: 10px; }
+  .stage { min-height: auto; }
+  .hud,
+  .main,
+  .logwrap {
+    width: 100%;
+    max-width: 100%;
+  }
+  .hud {
+    border-radius: 14px;
+    padding: 10px 58px 10px 10px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, .34);
+  }
+  .hud-id { gap: 8px; margin-bottom: 7px; align-items: flex-start; }
+  .avatar { width: 34px; height: 34px; border-radius: 9px; font-size: 16px; }
+  .pname { font-size: 13px; line-height: 1.25; overflow-wrap: anywhere; }
+  .pos { display: inline; margin-top: 0; font-size: 10px; line-height: 1.25; }
+  .pmeta, .pstage { font-size: 10px; line-height: 1.3; }
+  .commonroles { display: none; }
+  .yearprog { margin: 1px 0 7px; }
+  .yp-head { margin-bottom: 5px; }
+  .yp-yr { font-size: 10px; }
+  .yp-now { font-size: 10px; padding: 1px 7px; max-width: 56%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stamina { margin-bottom: 7px; }
+  .stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; margin-bottom: 5px; }
+  .stat {
+    min-width: 0;
+    padding: 4px 3px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg2);
+  }
+  .stat-top {
+    display: block;
+    text-align: center;
+    font-size: 9px;
+    line-height: 1.15;
+    margin-bottom: 0;
+  }
+  .stat-top b {
+    display: block;
+    margin-top: 1px;
+    font-size: 11px;
+    line-height: 1.1;
+  }
+  .stat .track { display: none; }
+  .track { height: 5px; }
+  .track.big { height: 7px; }
+  .res { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; margin-bottom: 6px; }
+  .resitem { padding: 4px 4px; border-radius: 8px; text-align: center; }
+  .resitem span { font-size: 9px; margin-bottom: 0; }
+  .resitem b { font-size: 10px; line-height: 1.25; overflow-wrap: anywhere; }
+  .champs { font-size: 10px; line-height: 1.25; padding: 4px 8px; margin-bottom: 5px; }
+  .debuffs { gap: 4px; margin-bottom: 6px; }
+  .db { font-size: 9.5px; padding: 2px 6px; }
+  .inv { padding-top: 7px; }
+  .bagbtn { min-height: 40px; padding: 7px 10px; }
 
   /* —— 主交互面板（present / say / choose 渲染处）—— */
-  .panel { padding: 18px 15px; min-height: auto; border-radius: var(--r-md); }
-  .panel-head { margin-bottom: 14px; }
-  .panel-head h2 { font-size: 19px; }
+  .main {
+    padding: 16px 14px;
+    min-height: auto;
+    border-radius: 14px;
+    box-shadow: 0 16px 38px rgba(0, 0, 0, .38);
+  }
+  .panel-head { padding-left: 12px; margin-bottom: 10px; }
+  .panel-head::before { top: 2px; height: 22px; }
+  .panel-head h2 { font-size: 17px; line-height: 1.3; letter-spacing: 0; overflow-wrap: anywhere; }
+  .panel-head .sub { font-size: 12px; line-height: 1.45; }
+  .panel-body { font-size: 14px; line-height: 1.65; }
+  .panel-body p { margin-bottom: 8px; }
+  .flavor { padding: 11px 12px; line-height: 1.65; }
 
   /* —— 选项 / 训练 / 强度：触控目标 ≥44px、间距防误触 —— */
-  .choices { margin-top: 16px; gap: 10px; }
-  .choice { padding: 14px 15px; min-height: 48px; }
+  .choices { margin-top: 12px; gap: 9px; }
+  .choice { padding: 11px 13px; min-height: 44px; border-radius: 12px; }
+  .choice .cl { font-size: 14px; line-height: 1.4; }
+  .choice .ch { font-size: 11.5px; line-height: 1.5; }
   .intensity { gap: 6px; }
-  .intbtn { padding: 10px 16px; min-height: 44px; }
+  .intbtn { padding: 9px 14px; min-height: 42px; }
   .int-hint { width: 100%; margin-left: 0; margin-top: 2px; }
-  .trainproj { padding: 14px; min-height: 60px; }
+  .train-stack { gap: 8px; }
+  .trainprojs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .trainproj { padding: 10px 10px; min-height: 50px; border-radius: 11px; }
+  .tp-name { font-size: 14px; line-height: 1.2; margin-bottom: 2px; }
+  .tp-info { font-size: 10.5px; line-height: 1.35; }
+  .tp-need { margin-top: 3px; font-size: 10px; }
 
   /* —— 商店：四列网格在窄屏改为竖向堆叠，避免挤压 —— */
   .shoprow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 12px 14px; }
@@ -1531,9 +1753,36 @@ body.settle-mode .choice{ text-align:center; align-items:center; min-width:260px
   .text-input { font-size: 16px; min-height: 48px; }
 
   /* —— 全屏 overlay · 常规赛转播台（#rs-root）—— */
-  #rs-root .topbar { padding: max(12px, env(safe-area-inset-top)) 14px 12px; gap: 10px; }
+  #rs-root .topbar {
+    display: grid;
+    grid-template-columns: 1fr repeat(2, minmax(72px, 88px));
+    align-items: center;
+    padding: max(12px, env(safe-area-inset-top)) 12px 10px;
+    gap: 8px;
+  }
   #rs-root .brand .logo { font-size: 20px; }
+  #rs-root .brand { min-width: 0; gap: 10px; }
+  #rs-root .brand .ttl { font-size: 15px; line-height: 1.35; letter-spacing: .4px; }
+  #rs-root .brand .sub { margin-top: 2px; font-size: 11px; line-height: 1.45; letter-spacing: 1.7px; white-space: normal; }
+  #rs-root .topbar .spacer { display: none; }
+  #rs-root .tbtn {
+    width: 100%;
+    min-height: 48px;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 8px;
+    border-radius: 14px;
+    font-size: 13px;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  #rs-root .tbtn svg { width: 15px; height: 15px; flex: none; }
+  #rs-root .idchip { grid-column: 1 / -1; justify-self: stretch; min-height: 44px; padding: 8px 12px; border-radius: 14px; }
+  #rs-root .idchip .nm { font-size: 13px; line-height: 1.25; }
+  #rs-root .idchip .rk { font-size: 11px; line-height: 1.35; }
   #rs-root .arena-head { padding: 14px 14px 6px; }
+  #rs-root .arena-head .lab { letter-spacing: 1.4px; font-size: 11px; }
+  #rs-root .arena-head h2 { font-size: 17px; line-height: 1.35; }
   #rs-root .arena-body { padding: 8px 14px 14px; }
   #rs-root .versus { gap: 10px; }
   #rs-root .vsmid { min-width: auto; }
@@ -1543,11 +1792,237 @@ body.settle-mode .choice{ text-align:center; align-items:center; min-width:260px
   #rs-root .modal { padding: 16px; }
 
   /* —— 全屏 overlay · 季后赛 / 深渊晋级图（#koscreen）—— */
-  #koscreen .ko-top { padding: max(12px, env(safe-area-inset-top)) 14px 12px; gap: 10px; }
-  #koscreen .brand .logo { font-size: 20px; }
-  #koscreen .matchcard { padding: 6px 14px 14px; }
-  /* 对阵树过宽时横向滚动，加惯性滚动并提示可滑动；不强行重排，保留完整晋级图。 */
-  #koscreen .bracketwrap { padding: 14px; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+  #koscreen .ko-top {
+    display: grid;
+    grid-template-columns: 1fr repeat(2, minmax(72px, 88px));
+    align-items: center;
+    padding: max(9px, env(safe-area-inset-top)) 10px 8px;
+    gap: 8px;
+  }
+  #koscreen .brand .logo { font-size: 18px; }
+  #koscreen .brand { min-width: 0; gap: 8px; }
+  #koscreen .brand .ttl { font-size: 14px; line-height: 1.25; letter-spacing: .2px; }
+  #koscreen .brand .sub { margin-top: 1px; font-size: 10px; line-height: 1.3; letter-spacing: 1.1px; white-space: normal; }
+  #koscreen .ko-top .spacer { display: none; }
+  #koscreen .ko-bagbtn {
+    width: 100%;
+    min-height: 42px;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 7px;
+    border-radius: 12px;
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  #koscreen .ko-bagbtn svg { width: 15px; height: 15px; flex: none; }
+  #koscreen .idchip { grid-column: 1 / -1; justify-self: stretch; min-height: 38px; padding: 7px 10px; border-radius: 12px; }
+  #koscreen .idchip .nm { font-size: 13px; line-height: 1.25; }
+  #koscreen .idchip .rk { font-size: 11px; line-height: 1.35; }
+  #koscreen {
+    overflow: hidden;
+    --ko-field-scale: calc(100vw / 1000px);
+  }
+  #koscreen.abyss { --ko-field-scale: calc(100vw / 1400px); }
+  #koscreen .ko-layout {
+    display: flex;
+    flex-direction: column;
+    height: calc(100dvh - 58px - env(safe-area-inset-top));
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  #koscreen .side {
+    flex: 0 0 auto;
+    width: 100%;
+    min-height: 46%;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+  }
+  #koscreen .side-head {
+    flex: none;
+    padding: 6px 12px 3px;
+  }
+  #koscreen .side-head .lab { letter-spacing: 1.6px; font-size: 10px; }
+  #koscreen .side-head h2 { font-size: 15px; line-height: 1.25; margin-top: 1px; }
+  #koscreen .ko-stam {
+    flex: none;
+    margin: 3px 12px 4px;
+    padding: 6px 8px;
+    border-radius: 10px;
+  }
+  #koscreen .ko-stam .stam-top { margin-bottom: 5px; }
+  #koscreen .ko-stam .stam-tags { display: none; }
+  #koscreen .progress {
+    flex: none;
+    padding: 0 12px 3px;
+  }
+  #koscreen .progress .row {
+    margin-top: 4px;
+    font-size: 10px;
+  }
+  #koscreen .matchcard {
+    flex: 0 0 auto;
+    min-height: 0;
+    overflow: visible;
+    padding: 2px 12px 5px;
+  }
+  #koscreen .mc-meta {
+    margin: 1px 0 4px;
+    gap: 6px;
+  }
+  #koscreen .mc-day { font-size: 10px; padding: 3px 7px; }
+  #koscreen .mc-stage,
+  #koscreen .mc-code { font-size: 10.5px; }
+  #koscreen .versus {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 48px minmax(0, 1fr);
+    gap: 6px;
+    align-items: stretch;
+    margin-bottom: 6px;
+  }
+  #koscreen #ko-vsA,
+  #koscreen #ko-vsB {
+    min-width: 0;
+    display: flex;
+  }
+  #koscreen .tcard {
+    width: 100%;
+    min-width: 0;
+    flex-direction: column;
+    justify-content: center;
+    text-align: center;
+    gap: 5px;
+    padding: 8px 6px;
+    min-height: 82px;
+    border-radius: 12px;
+  }
+  #koscreen .tcard .crest {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    font-size: 14px;
+  }
+  #koscreen .tcard .info { width: 100%; }
+  #koscreen .tcard .nm {
+    font-size: 13px;
+    line-height: 1.25;
+    overflow: visible;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  #koscreen .tcard .rg { margin-top: 1px; font-size: 9px; }
+  #koscreen .tcard .you { padding: 1px 5px; font-size: 8px; margin-left: 4px; }
+  #koscreen .tcard.win::after {
+    top: 7px;
+    right: 8px;
+    transform: none;
+    font-size: 12px;
+  }
+  #koscreen .clashzone {
+    height: auto;
+    min-height: 82px;
+    margin: 0;
+    border-radius: 12px;
+  }
+  #koscreen .clashzone .vsword { font-size: 11px; }
+  #koscreen .knife { width: 52px; height: 13px; margin: -6.5px 0 0 -26px; }
+  #koscreen .roll,
+  #koscreen .result {
+    margin-bottom: 6px;
+    padding: 8px 9px;
+    border-radius: 10px;
+  }
+  #koscreen .roll .dice {
+    margin: 2px 0 5px;
+    gap: 8px;
+  }
+  #koscreen .die {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    padding: 5px;
+  }
+  #koscreen .die i { width: 5px; height: 5px; }
+  #koscreen .roll .dice .v { font-size: 21px; }
+  #koscreen .roll .dice .tier {
+    font-size: 10.5px;
+    padding: 2px 7px;
+  }
+  #koscreen .roll .fb,
+  #koscreen .result .cause {
+    font-size: 11.5px;
+    line-height: 1.45;
+  }
+  #koscreen .result .rh { margin-bottom: 4px; }
+  #koscreen .result .rh b,
+  #koscreen .result .score { font-size: 12px; }
+  #koscreen .result .place {
+    margin-top: 4px;
+    font-size: 10.5px;
+  }
+  #koscreen .actions {
+    flex: none;
+    padding: 6px 12px calc(7px + env(safe-area-inset-bottom));
+  }
+  #koscreen .bigbtn {
+    min-height: 42px;
+    padding: 9px 12px;
+    font-size: 14px;
+    border-radius: 11px;
+  }
+  #koscreen .bigbtn.skip,
+  #koscreen .bigbtn.ceremony { margin-top: 6px; }
+  #koscreen .hint {
+    margin-top: 5px;
+    font-size: 10.5px;
+    line-height: 1.35;
+  }
+  #koscreen .bracketwrap {
+    flex: 1 1 50%;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    overflow: hidden;
+    padding: 8px 0 10px;
+    box-sizing: border-box;
+  }
+  #koscreen .bracket-title {
+    margin-bottom: 6px;
+    gap: 8px;
+    padding: 0 12px;
+  }
+  #koscreen .bracket-title .ico {
+    font-size: 12px;
+    letter-spacing: .5px;
+  }
+  #koscreen .legend {
+    display: none;
+  }
+  #koscreen .field {
+    transform: scale(var(--ko-field-scale));
+    transform-origin: top left;
+  }
+  #koscreen.season .field {
+    width: 1000px;
+    min-width: 1000px;
+  }
+  #koscreen.abyss .field {
+    width: 1400px;
+    min-width: 1400px;
+  }
+  #koscreen svg.links {
+    display: none;
+  }
+  #koscreen .daycols { margin-bottom: 10px; }
+  #koscreen .daycol .d { font-size: 11px; padding: 6px 0; }
+  #koscreen .daycol .t { font-size: 9px; margin-top: 4px; }
+  #koscreen .node { border-radius: 11px; }
+  #koscreen .node.current { animation: none; }
+  #koscreen .champ { border-radius: 12px; }
   #koscreen .legend { margin-left: 0; flex-wrap: wrap; }
   #koscreen .modal { padding: 16px; }
 
@@ -1557,6 +2032,345 @@ body.settle-mode .choice{ text-align:center; align-items:center; min-width:260px
 
   /* —— toast 居中避开底部安全区 —— */
   .toast { bottom: calc(20px + env(safe-area-inset-bottom)); }
+
+  /* —— 事件流水：手机上默认收成底部按钮，按需展开为抽屉 —— */
+  .logwrap {
+    position: fixed;
+    left: max(12px, env(safe-area-inset-left));
+    right: max(12px, env(safe-area-inset-right));
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    z-index: 70;
+    width: min(406px, calc(100vw - 24px));
+    margin: 0 auto;
+    padding: 0;
+    border-radius: 14px;
+    overflow: hidden;
+    background: rgba(19, 29, 49, .96);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 18px 46px rgba(0, 0, 0, .56);
+  }
+  .logtoggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    min-height: 52px;
+    padding: 0 14px;
+    color: var(--fg);
+    background: linear-gradient(135deg, rgba(29, 41, 66, .98), rgba(14, 22, 38, .98));
+    border: 0;
+    cursor: pointer;
+    font: 700 14px/1.2 "Noto Sans SC", -apple-system, "PingFang SC", sans-serif;
+  }
+  .logtoggle:focus-visible { outline: 2px solid var(--gold2); outline-offset: -3px; }
+  .logtoggle-main { display: inline-flex; align-items: center; gap: 9px; }
+  .logtoggle svg { width: 18px; height: 18px; color: var(--gold2); }
+  .logtoggle-count {
+    min-width: 28px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    padding: 0 8px;
+    border-radius: 999px;
+    background: var(--gold-soft);
+    border: 1px solid rgba(226, 181, 62, .3);
+    color: var(--gold2);
+    font-family: "Sora", sans-serif;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .logwrap .logtitle,
+  .logwrap .log {
+    display: none;
+  }
+  .logwrap.open .logtitle {
+    display: block;
+    margin: 12px 14px 8px;
+  }
+  .logwrap.open .log {
+    display: flex;
+    max-height: min(42dvh, 330px);
+    padding: 0 14px 14px;
+  }
+  .logline { font-size: 11.5px; line-height: 1.55; }
+}
+
+/* v5.1 mobile polish: event log lives as a small action on the ID card; opened as a modal. */
+@media (max-width: 880px) {
+  .app { padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
+  .sidebar { position: relative; }
+  .hud { padding-right: 62px; }
+  body.shop-focus .sidebar,
+  body.year-settle-focus .sidebar { display: none; }
+  body.shop-focus .layout,
+  body.year-settle-focus .layout { display: block; }
+  body.shop-focus .app,
+  body.year-settle-focus .app { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+
+  .logwrap {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    left: auto;
+    bottom: auto;
+    z-index: 72;
+    width: auto;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 12px;
+    overflow: visible;
+    background: transparent;
+    backdrop-filter: none;
+    box-shadow: none;
+  }
+  .logtoggle {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding: 0;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, .10);
+    color: var(--gold2);
+    background: rgba(24, 35, 58, .72);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, .22);
+  }
+  .logtoggle-main { display: grid; place-items: center; }
+  .logtoggle-main span { display: none; }
+  .logtoggle svg { width: 17px; height: 17px; }
+  .logtoggle-count {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--gold2);
+    border: 2px solid var(--surface);
+    color: #1a1205;
+    font-family: "Sora", sans-serif;
+    font-size: 10px;
+    line-height: 14px;
+  }
+  .logwrap .logtitle,
+  .logwrap .log { display: none; }
+
+  .logwrap.open {
+    position: fixed;
+    inset: 0;
+    z-index: 4200;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    width: auto;
+    padding: max(18px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+    border-radius: 0;
+    background: rgba(5, 7, 13, .72);
+    backdrop-filter: blur(5px);
+  }
+  .logwrap.open .logtoggle {
+    position: static;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: min(430px, 100%);
+    min-height: 54px;
+    padding: 0 16px;
+    border-radius: 16px 16px 0 0;
+    border: 1px solid var(--line2);
+    border-bottom: 0;
+    background: linear-gradient(135deg, var(--raise), var(--surface2));
+    box-shadow: 0 22px 60px rgba(0, 0, 0, .52);
+  }
+  .logwrap.open .logtoggle-main {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .logwrap.open .logtoggle-main span { display: inline; color: var(--fg); font-size: 15px; }
+  .logwrap.open .logtoggle-count {
+    position: static;
+    min-width: 28px;
+    height: 26px;
+    padding: 0 8px;
+    border: 1px solid rgba(226, 181, 62, .3);
+    background: var(--gold-soft);
+    color: var(--gold2);
+    line-height: 24px;
+    font-size: 12px;
+  }
+  .logwrap.open .logtitle { display: none; }
+  .logwrap.open .log {
+    display: flex;
+    width: min(430px, 100%);
+    max-height: min(62dvh, 460px);
+    overflow-y: auto;
+    padding: 14px 16px 16px;
+    border: 1px solid var(--line2);
+    border-radius: 0 0 16px 16px;
+    background: linear-gradient(180deg, var(--surface), var(--bg2));
+    box-shadow: 0 22px 60px rgba(0, 0, 0, .52);
+  }
+}
+
+/* 手机纵向布局最终对齐：确保 HUD / 训练主面板 / 事件按钮共享同一列宽。 */
+@media (max-width: 600px) {
+  .layout,
+  .sidebar,
+  .stage,
+  .hud,
+  .main {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+  .hud { padding: 10px 58px 10px 10px; }
+  .logwrap:not(.open) {
+    width: 44px;
+    max-width: 44px;
+    min-width: 44px;
+  }
+}
+
+/* 常规赛手机半屏版：上半屏当前比赛 + 操作，下半屏战报。 */
+@media (max-width: 600px) {
+  #rs-root { overflow: hidden; }
+  #rs-root .topbar {
+    grid-template-columns: minmax(0, 1fr) repeat(2, 72px);
+    min-height: 58px;
+    padding: max(8px, env(safe-area-inset-top)) 10px 8px;
+    gap: 6px;
+  }
+  #rs-root .brand .logo { font-size: 18px; }
+  #rs-root .brand .ttl { font-size: 14px; line-height: 1.25; }
+  #rs-root .brand .sub { font-size: 10px; line-height: 1.25; letter-spacing: 1px; }
+  #rs-root .tbtn { min-height: 44px; padding: 6px; border-radius: 12px; font-size: 12px; }
+  #rs-root .idchip { display: none; }
+  #rs-root .layout {
+    height: calc(100dvh - 58px);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  #rs-root .arena {
+    flex: 0 0 auto;
+    width: 100%;
+    min-height: 50%;
+    height: auto;
+    overflow: visible;
+    box-sizing: border-box;
+  }
+  #rs-root .arena-head { padding: 8px 12px 3px; }
+  #rs-root .arena-head .lab { font-size: 10px; letter-spacing: 1px; }
+  #rs-root .arena-head h2 { font-size: 15px; margin-top: 1px; }
+  #rs-root .arena-head .rec { font-size: 10px; line-height: 1.25; }
+  #rs-root .arena-head .rec b { font-size: 20px; }
+  #rs-root .progress { padding: 2px 12px 4px; }
+  #rs-root .rs-stam { margin: 6px 12px 0; padding: 7px 9px; border-radius: 10px; }
+  #rs-root .rs-stam .stam-top { font-size: 11px; margin-bottom: 4px; }
+  #rs-root .rs-stam .stam-track { height: 6px; }
+  #rs-root .rs-stam .stam-tags { margin-top: 5px; gap: 4px; }
+  #rs-root .rs-stam .db { font-size: 10px; padding: 2px 6px; }
+  #rs-root .arena-body {
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+    padding: 6px 12px 8px;
+  }
+  #rs-root .mc-meta { gap: 6px; margin: 2px 0 7px; }
+  #rs-root .mc-rd { font-size: 11px; padding: 3px 9px; border-radius: 6px; }
+  #rs-root .mc-bo,
+  #rs-root .mc-code { font-size: 10.5px; }
+  #rs-root .versus {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 54px minmax(0, 1fr);
+    gap: 7px;
+    align-items: stretch;
+  }
+  #rs-root .vteam { min-width: 0; border-radius: 14px; padding: 10px 8px; }
+  #rs-root .vteam .crest { width: 40px; height: 40px; border-radius: 12px; font-size: 19px; }
+  #rs-root .vteam .nm { margin-top: 7px; font-size: 14px; line-height: 1.25; overflow-wrap: anywhere; }
+  #rs-root .vteam .you { display: none; }
+  #rs-root .vteam.win::after { top: 7px; right: 8px; font-size: 9px; letter-spacing: 1px; }
+  #rs-root .vsmid { min-width: 0; gap: 3px; }
+  #rs-root .vsmid .bo { display: none; }
+  #rs-root .vsmid .score { min-height: 28px; font-size: 24px; white-space: nowrap; }
+  #rs-root .vsmid .vs { font-size: 16px; letter-spacing: 1.5px; }
+  #rs-root .buffrow { min-height: 0; margin: 7px auto 0; gap: 5px; }
+  #rs-root .buffchip { font-size: 10.5px; padding: 3px 8px; border-radius: 7px; }
+  #rs-root .mstatus { margin: 6px auto 0; font-size: 11.5px; line-height: 1.45; }
+  #rs-root .actions {
+    flex: 0 0 auto;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+  }
+  #rs-root .actions .inner {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    max-width: none;
+  }
+  #rs-root #rs-continueBtn {
+    grid-column: 1 / -1;
+    margin-bottom: 0;
+  }
+  #rs-root #rs-actBtn.done {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+    width: 100%;
+  }
+  #rs-root .bigbtn {
+    min-height: 44px;
+    padding: 9px 10px;
+    border-radius: 12px;
+    font-size: 13px;
+    letter-spacing: .2px;
+  }
+  #rs-root .bigbtn.skip {
+    margin-top: 0;
+    padding: 9px 10px;
+    font-size: 12px;
+  }
+  #rs-root .bigbtn.skip svg { width: 14px; height: 14px; }
+  #rs-root .hint { display: none; }
+  #rs-root .reportcol {
+    flex: 1 1 50%;
+    width: 100%;
+    height: auto;
+    max-height: none;
+    min-height: 0;
+    border-top: 1px solid var(--line);
+    box-sizing: border-box;
+  }
+  #rs-root .rc-head { display: block; padding: 8px 12px 6px; }
+  #rs-root .rc-head .lab { font-size: 10px; letter-spacing: 1.4px; }
+  #rs-root .rc-head h2 { font-size: 14px; margin-top: 1px; }
+  #rs-root .feed {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 8px 10px;
+    gap: 6px;
+  }
+  #rs-root .feed-empty { padding: 12px 8px; font-size: 11px; line-height: 1.45; }
+  #rs-root .rcard { grid-template-columns: 24px 1fr auto; gap: 7px; padding: 7px 9px; border-radius: 10px; }
+  #rs-root .rcard .rd { font-size: 10px; }
+  #rs-root .rcard .tm,
+  #rs-root .rcard .sc { font-size: 12px; }
+  #rs-root .rcard .res {
+    width: 44px;
+    min-width: 44px;
+    text-align: center;
+    font-size: 10px;
+    padding: 2px 0;
+  }
 }
 
 /* =============================================================================
