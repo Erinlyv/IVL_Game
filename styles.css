@@ -92,7 +92,6 @@ body {
 .pos { font-size: 11px; color: var(--gold2); font-weight: 600; letter-spacing: .3px; }
 .pmeta { font-size: 12px; color: var(--muted); margin-top: 1px; }
 .pstage { font-size: 12px; color: var(--gold); margin-top: 2px; }
-
 /* 常用角色（demov4.2feedbackrole·角色创建）：训练界面左侧栏「人物设定」下方纯文本展示，不高亮 */
 .commonroles { margin: 0 0 15px; font-size: 12.5px; color: var(--fg); line-height: 1.6; }
 .commonroles .cr-lab { color: var(--muted); }
@@ -314,12 +313,12 @@ body {
 .panel-body b { color: var(--gold2); font-weight: 600; }
 .flavor {
   color: #d6dcec; font-style: normal; background: var(--bg2);
-  border-left: 3px solid var(--gold); padding: 13px 16px; border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  padding: 13px 16px; border-radius: var(--r-sm);
   line-height: 1.75;
 }
 .muted { color: var(--muted); font-size: 13px; }
 .muted b { color: var(--fg); }
-.declaim-em { margin: 16px 0; padding: 12px 16px; border-left: 3px solid var(--gold2);
+.declaim-em { margin: 16px 0; padding: 12px 16px;
   background: var(--gold-soft); border-radius: var(--r-sm); color: var(--fg);
   font-weight: 600; font-size: 14px; line-height: 1.7; letter-spacing: .3px; }
 .notice-more {
@@ -494,6 +493,28 @@ body {
   color: #1a1205; background: linear-gradient(135deg, var(--gold2), var(--gold)); }
 .db.rare { background: linear-gradient(135deg, rgba(245, 207, 106, .2), rgba(226, 181, 62, .1));
   color: var(--gold2); border-color: rgba(245, 207, 106, .42); }
+
+/* 深渊黑马：民间队招募面板 */
+.golden-recruit { border: 1px solid rgba(245, 207, 106, .30); background: linear-gradient(180deg, rgba(245, 207, 106, .08), rgba(255,255,255,.02));
+  border-radius: var(--r); padding: 18px; }
+.gm-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.gm-head span { font-weight: 700; color: var(--fg); }
+.gm-head b { color: var(--gold2); font-family: "Sora", sans-serif; font-size: 13px; }
+.gm-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.gm-card { min-width: 0; border: 1px solid var(--line2); background: var(--surface); border-radius: var(--r-sm); padding: 12px; }
+.gm-card.locked { border-color: rgba(245, 207, 106, .42); background: linear-gradient(180deg, rgba(245,207,106,.08), var(--surface)); }
+.gm-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.gm-card span { display: block; color: var(--muted); font-size: 12px; }
+.gm-card b { display: block; margin: 5px 0 8px; font-family: "Sora", sans-serif; color: var(--gold2); font-size: 22px; line-height: 1; }
+.gm-track { height: 6px; border-radius: 999px; background: var(--bg); overflow: hidden; }
+.gm-track i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--gold), var(--gold2)); }
+.gm-lock { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--line2);
+  background: var(--bg2); color: var(--gold2); cursor: pointer; }
+.gm-lock:hover { border-color: var(--gold2); }
+.gm-reroll { width: 100%; margin-top: 10px; border: 1px solid var(--line2); border-radius: 9px; padding: 7px 8px;
+  background: var(--bg2); color: var(--fg); font-size: 12px; cursor: pointer; }
+.gm-reroll:hover { border-color: var(--gold2); }
+.gm-reroll:disabled { color: var(--dim); cursor: not-allowed; border-color: var(--line); opacity: .58; }
 
 /* ---------------------- 手动掷骰 · 该你上场了！ ---------------------- */
 .dice-stage { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 26px 10px 14px; text-align: center; }
@@ -1700,6 +1721,7 @@ body.settle-mode .choice{ text-align:center; align-items:center; min-width:260px
   .champs { font-size: 10px; line-height: 1.25; padding: 4px 8px; margin-bottom: 5px; }
   .debuffs { gap: 4px; margin-bottom: 6px; }
   .db { font-size: 9.5px; padding: 2px 6px; }
+  .gm-grid { grid-template-columns: 1fr; }
   .inv { padding-top: 7px; }
   .bagbtn { min-height: 40px; padding: 7px 10px; }
 

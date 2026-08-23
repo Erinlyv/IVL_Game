@@ -17,7 +17,7 @@ const html = `<!DOCTYPE html><html><body>
   <div id="cc"></div>
 </body></html>`;
 
-const dom = new JSDOM(html, { runScripts: "outside-only", pretendToBeVisual: true });
+const dom = new JSDOM(html, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://ivl.test/" });
 global.window = dom.window;
 global.document = dom.window.document;
 global.navigator = dom.window.navigator;
@@ -252,9 +252,115 @@ function testPositionSwitch() {
   console.log("[转位置修复] 断言通过：rerollPosition 阵营/定位名/常用角色一致 + 总决赛 posKey 阵营兜底生效。");
 }
 
+/* 深渊黑马身份解锁 · UI 断言：未满足 3 个不同结局时显示但置灰；满足后可选并出现模式说明问号。 */
+async function testGoldenIdentityUnlock() {
+  const makeDom = () => {
+    const dx = new JSDOM(`<!DOCTYPE html><html><body><div id="cc"></div></body></html>`,
+      { runScripts: "outside-only", pretendToBeVisual: true, url: "https://ivl.test/" });
+    dx.window.eval(engineSrc + "\n;//---\n" + chargenSrc);
+    return dx;
+  };
+  const fire = (domx, el, v) => { el.value = v; el.dispatchEvent(new domx.window.Event("input")); };
+  const reachIdentity = (unlocked) => {
+    const dx = makeDom();
+    const d = dx.window.document;
+    dx.window.IVLChargen.run({ goldenUnlocked: unlocked });
+    fire(dx, d.querySelector("#ccteam"), "测试队");
+    fire(dx, d.querySelector("#ccpid"), "测试侠");
+    d.querySelector("#ccnext").click();
+    d.querySelector('.opt[data-role="survivor"]').click();
+    d.querySelector("#ccnext").click();
+    d.querySelector("#ccpos .opt").click();
+    d.querySelector("#ccnext").click();
+    Array.from(d.querySelectorAll("#cc .chip.rec")).slice(0, 3).forEach((b) => b.click());
+    d.querySelector("#ccnext").click();
+    const opts = Array.from(d.querySelectorAll("#ccids .opt"));
+    return {
+      names: opts.map((o) => o.querySelector(".nm").textContent.replace("?", "").trim()),
+      golden: opts.find((o) => o.querySelector(".nm").textContent.includes("深渊黑马")),
+    };
+  };
+  const locked = reachIdentity(false);
+  const unlocked = reachIdentity(true);
+  if (locked.names.length !== 4 || !locked.names.includes("深渊黑马")) {
+    throw new Error("深渊黑马未解锁时也应显示为第 4 项，实际：" + locked.names.join(" / "));
+  }
+  if (!locked.golden.classList.contains("locked") || locked.golden.getAttribute("aria-disabled") !== "true" ||
+      !locked.golden.querySelector(".ds").textContent.includes("完成3个不同结局即可解锁。")) {
+    throw new Error("深渊黑马未解锁时应置灰且展示解锁文案");
+  }
+  if (!locked.golden.querySelector(".lockmark")) {
+    throw new Error("深渊黑马未解锁时应在选项最右侧显示小锁");
+  }
+  if (unlocked.names.length !== 4 || !unlocked.names.includes("深渊黑马")) {
+    throw new Error("深渊黑马解锁后应作为第 4 身份出现，实际：" + unlocked.names.join(" / "));
+  }
+  if (unlocked.golden.classList.contains("locked") || !unlocked.golden.querySelector(".qmark") ||
+      !unlocked.golden.querySelector(".ds").textContent.includes("开局即巅峰！深渊民间队黑马进军职业赛场")) {
+    throw new Error("深渊黑马解锁后应可选、展示新文案并提供模式说明问号");
+  }
+  console.log("[深渊黑马身份] UI 解锁断言通过：未解锁置灰可见，解锁后可选并带模式说明。");
+}
+
+async function testNpcTeamCustomization() {
+  const dx = new JSDOM(`<!DOCTYPE html><html><body><div id="cc"></div></body></html>`,
+    { runScripts: "outside-only", pretendToBeVisual: true, url: "https://ivl.test/" });
+  dx.window.eval(engineSrc + "\n;//---\n" + chargenSrc);
+  const d = dx.window.document;
+  const fire = (el, v) => { el.value = v; el.dispatchEvent(new dx.window.Event("input")); };
+  let resolved = null;
+  dx.window.IVLChargen.run({ goldenUnlocked: true }).then((r) => { resolved = r; });
+  if (!d.querySelector("#ccteamroll .dice-icon") || /随机/.test(d.querySelector("#ccteamroll").textContent)) {
+    throw new Error("随机按钮应显示小骰子，不能显示汉字“随机”");
+  }
+
+  fire(d.querySelector("#ccteam"), "测试队");
+  fire(d.querySelector("#ccpid"), "测试侠");
+  d.querySelector("#ccNpcNames").click();
+  const inputs = Array.from(d.querySelectorAll("#ccNpcFields .npc-input"));
+  if (inputs.length !== 10) { throw new Error("NPC 队名弹窗应提供 10 个输入框，实际：" + inputs.length); }
+  const labels = Array.from(d.querySelectorAll("#ccNpcFields .npc-field span")).map((x) => x.textContent.trim());
+  if (labels[9] !== "10.仅深渊黑马模式需填写") {
+    throw new Error("NPC 第 10 项标签不符合反馈：" + labels[9]);
+  }
+  fire(inputs[0], "Alpha");
+  fire(inputs[1], "Alpha");
+  d.querySelector("#ccNpcSave").click();
+  if (!d.querySelector("#ccNpcError").textContent.includes("战队名称不可重复")) {
+    throw new Error("NPC 队名重复时应展示就近错误提示");
+  }
+  inputs.forEach((inp, i) => fire(inp, "NPC" + (i + 1)));
+  d.querySelector("#ccNpcSave").click();
+  if (d.querySelector("#ccNpcModal").classList.contains("show")) {
+    throw new Error("NPC 队名修正后应成功保存并关闭弹窗");
+  }
+
+  d.querySelector("#ccnext").click();
+  d.querySelector('.opt[data-role="survivor"]').click();
+  d.querySelector("#ccnext").click();
+  d.querySelector("#ccpos .opt").click();
+  d.querySelector("#ccnext").click();
+  Array.from(d.querySelectorAll("#cc .chip.rec")).slice(0, 3).forEach((b) => b.click());
+  d.querySelector("#ccnext").click();
+  Array.from(d.querySelectorAll("#ccids .opt")).find((o) => o.textContent.includes("深渊黑马")).click();
+  d.querySelector("#ccnext").click();
+  d.querySelector("#ccnext").click();
+  d.querySelector("#ccclose").click();
+  await new Promise((r) => setImmediate(r));
+  if (!resolved || !Array.isArray(resolved.customNpcTeams) || resolved.customNpcTeams.length !== 10) {
+    throw new Error("深渊黑马应返回 10 支自定义大陆 NPC 职业战队名称");
+  }
+  if (resolved.customNpcTeams.join("/") !== "NPC1/NPC2/NPC3/NPC4/NPC5/NPC6/NPC7/NPC8/NPC9/NPC10") {
+    throw new Error("深渊黑马自定义 NPC 队名返回值不正确：" + resolved.customNpcTeams.join("/"));
+  }
+  console.log("[NPC战队名称] UI 断言通过：弹窗 10 输入、重复校验、深渊黑马返回 10 支自定义队名。");
+}
+
 async function run() {
   testSaveResume();
   testPositionSwitch();
+  await testGoldenIdentityUnlock();
+  await testNpcTeamCustomization();
   dom.window.__KO_FAST = true;   // 关闭晋级图动画时序，冲烟快速跑通
   dom.window.dispatchEvent(new dom.window.Event("DOMContentLoaded"));
   let idle = 0, ticks = 0;

@@ -49,6 +49,9 @@ function commonRolesHtml(cls) {
   }
   return `<div class="commonroles"><span class="cr-lab">常用角色</span>：${P.commonRoles.join("，")}</div>`;
 }
+function goldenBadgeHtml(cls = "") {
+  return "";
+}
 
 /* demov4.2feedback《成就·无双/逆版本的神》：每次玩家真正当选 FMVP 时记录身份与版本处境。
  *   · 无双：转过位置 + 求生/监管两身份都拿过 FMVP；
@@ -246,7 +249,7 @@ function renderHUD() {
       <div class="avatar">${(P.name || "?").slice(0, 1)}</div>
       <div>
         <div class="pname">${P.name} <span class="pos">${P.role}${P.positionName ? "·" + P.positionName : ""}</span></div>
-        <div class="pmeta">${idShort(P)} · ${curAge}岁 · 第 ${curYear}/7 赛年</div>
+        <div class="pmeta">${idShort(P)} · ${curAge}岁 · 第 ${curYear}/7 赛年 ${goldenBadgeHtml()}</div>
         <div class="pstage">阶段：${curStage}</div>
       </div>
     </div>
@@ -397,9 +400,11 @@ function achDisplayClass(name) { return ACH_SPECIAL_CLASS[name] || ACH_TIER_CLAS
 const INSTANT_ACH = new Set([
   "大满贯", "洲际之巅", "冠军选手", "FMVP", "专属王朝", "电竞白月光", "六边形战士", "操作手", "战队大脑",
   "大器晚成", "浪迹天涯", "轻伤不下火线", "绝活信仰玩家", "返老还童", "庄园快信", "逆转未来", "万能螺丝",
-  "光荣的荆棘路", "百炼成钢", "年度最佳演绎",
+  "光荣的荆棘路", "英雄出少年", "百炼成钢", "年度最佳演绎",
   // demov4.2feedback 新增（达成即锁定的里程碑）
   "猫猫人", "及时送达", "无双", "逆版本的神",
+  // 深渊黑马专属里程碑
+  "崭露头角", "顶峰相见", "王朝新立", "这就是我们的羁绊！",
 ]);
 function liveAchCheck() {
   if (!P) { return; }
@@ -437,21 +442,24 @@ const IDENTITY_INTRO = {
   "主播": "出道前你已是圈内小有名气的主播，自带话题与粉丝。镜头感是你的天赋，争议也是。",
   "人皇": "段位榜前几页，常年挂着你的 ID。出神入化的遛鬼技术，让战队直接把邀请送到了你面前。",
   "屠皇": "段位榜前几页，常年挂着你的 ID。手中的多个断层S1角色，让战队亲自找上了门。",
+  "深渊黑马": "你以民间队选手身份第一次站上深渊，就把所有人的目光打到了自己身上。天才会被看见，也会被研究。",
 };
-const IDENTITY_NAME = { "青训": "青训选手", "主播": "人气主播", "人皇": "榜前人皇", "屠皇": "榜前屠皇" };
+const IDENTITY_NAME = { "青训": "青训选手", "主播": "人气主播", "人皇": "榜前人皇", "屠皇": "榜前屠皇", "深渊黑马": "深渊黑马" };
 const IDENTITY_EFFECT = {
   "青训": "开局首个训练周期 +2 次训练机会",
   "主播": "初始人气、资金较高；首年队内选拔获扶持",
   "人皇": "初始技术较高",
   "屠皇": "初始技术较高",
+  "深渊黑马": "初始四维更强；职业生涯中会出现深渊黑马模式水平波动，稳定性初始上限 50",
 };
 
 function textPrompt({ step, sub, inputId, btnId, placeholder, fallback, maxlen = 12, preview }) {
   return new Promise((resolve) => {
+    const title = (typeof step === "number") ? `创建角色 · 第 ${step} 步` : step;
     main().innerHTML = `
-      <div class="panel-head"><h2>创建角色 · 第 ${step} 步</h2><p class="sub">${sub}</p></div>
+      <div class="panel-head"><h2>${htmlEscape(title)}</h2><p class="sub">${htmlEscape(sub || "")}</p></div>
       <div class="panel-body">
-        <input id="${inputId}" class="text-input" maxlength="${maxlen}" placeholder="${placeholder}" />
+        <input id="${inputId}" class="text-input" maxlength="${maxlen}" placeholder="${htmlEscape(placeholder)}" />
         ${preview ? `<div class="idpreview" id="idpreview"></div>` : ""}
       </div>
       <div class="choices"><button class="choice primary" id="${btnId}"><span class="cl">下一步</span></button></div>`;
@@ -467,18 +475,21 @@ function textPrompt({ step, sub, inputId, btnId, placeholder, fallback, maxlen =
   });
 }
 
-async function characterCreation() {
+async function characterCreation(goldenUnlocked = false) {
   // 角色创建界面完全照搬 demo6「俱乐部签约」四步流程（chargen.js / chargen.css）：
   // 建档 → 定位 → 身份 → 天赋检定 → 签约完成弹窗。数值仍由引擎 E.Player 生成。
-  const { player } = await window.IVLChargen.run();
+  const { player, customNpcTeams } = await window.IVLChargen.run({ goldenUnlocked });
   P = player;
   curYear = 1; curAge = 18;
   P.stamina = P.stamina_max;                 // v4.0：开局即满体力（不再显示 0）
-  gameTeams = E.generateTeams(P.teamName);   // v4.0：生成本局各赛区 NPC 队名池
+  gameTeams = E.generateTeams(P.teamName, {
+    domesticCount: E.isGoldenPlayer(P) ? 10 : 9,
+    domesticNames: customNpcTeams,
+  });                                        // v4.0：生成本局各赛区 NPC 队名池
   gameTeams.meta = E.buildTeamMeta(gameTeams);  // demov4.2feedback《NPC优化·战队风格》：本局战队实力/稳定性档
   yearPhase = 0;
   renderHUD();
-  pushLog(`${P.name} 出道，阵营${P.role}。`, "good");
+  pushLog(`${P.name} 出道，阵营${P.role}${E.isGoldenPlayer(P) ? "，身份深渊黑马" : ""}。`, "good");
 }
 
 function rollCardHtml(t) {
@@ -491,6 +502,412 @@ function rollCardHtml(t) {
     ${row("容貌", t.appearance, "#f0a6c0")}
     <div class="rollmeta">资金 ${t.money.toFixed(0)} G · 人气 ${t.pop.toFixed(0)} 万 · 体力上限 ${t.stamina_max.toFixed(0)}</div>
   </div>`;
+}
+
+function htmlEscape(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+}
+function goldenEvents() {
+  if (!P.golden_events || !(P.golden_events instanceof Set)) { P.golden_events = new Set(P.golden_events || []); }
+  return P.golden_events;
+}
+function goldenSeen(key) { return goldenEvents().has(key); }
+function goldenMark(key) { goldenEvents().add(key); }
+function goldenDeltaText(before) { return `<p class="ok">${trainingDeltaText(before)}</p>`; }
+function goldenAttrCap(attr) {
+  return attr === "stab" ? (P.golden_stab_cap || E.CONFIG.GOLDEN.STAB_CAP) : 100;
+}
+function goldenRawAttr(attr, amount) {
+  if (!P || !["tech", "tac", "phys", "stab"].includes(attr)) return;
+  P[attr] = E.clamp(P[attr] + amount, 0, goldenAttrCap(attr));
+}
+function goldenRawPop(amount) {
+  if (!P) return;
+  P.pop = Math.max(0, P.pop + amount);
+}
+function goldenStabCapAdd(amount) {
+  if (!P) return;
+  const cur = P.golden_stab_cap || E.CONFIG.GOLDEN.STAB_CAP;
+  P.golden_stab_cap = E.clamp(cur + amount, E.CONFIG.GOLDEN.STAB_CAP, 100);
+  P._clamp();
+}
+function goldenShoutPrompt() {
+  return new Promise((resolve) => {
+    main().innerHTML = `
+      <div class="panel-head"><h2>深渊黑马 · 向着深渊进发！</h2><p class="sub">深渊预选赛开始前</p></div>
+      <div class="panel-body">
+        <p class="flavor">“欢迎大家来到第五人格深渊的呼唤预选赛比赛现场！第一场比赛即将开始，让我们欢迎两支队伍入场！”</p>
+        <p class="flavor">你被队友们推出来喊话。站在话筒前，你想要说什么？</p>
+        <input id="goldenShout" class="text-input" maxlength="40" placeholder="输入你的赛前喊话" />
+      </div>
+      <div class="choices"><button class="choice primary" id="goldenShoutOk"><span class="cl">确认喊话</span></button></div>`;
+    const inp = $("#goldenShout");
+    const go = () => resolve((inp.value || "我们会赢下去").trim() || "我们会赢下去");
+    inp.focus();
+    $("#goldenShoutOk").onclick = go;
+    inp.onkeydown = (e) => { if (e.key === "Enter") go(); };
+  });
+}
+
+function goldenMateRange() {
+  const range = E.CONFIG && E.CONFIG.GOLDEN && E.CONFIG.GOLDEN.TEAM_BASE_RANGE;
+  return Array.isArray(range) && range.length >= 2 ? range : [25, 75];
+}
+function rollGoldenMates() {
+  const names = ["一号队友", "二号队友", "三号队友", "四号队友"];
+  const range = goldenMateRange();
+  return names.map((name) => ({ name, level: E.randint(range[0], range[1]), locked: false }));
+}
+function goldenMateCards(mates) {
+  return mates.map((m, i) => `<div class="gm-card ${m.locked ? "locked" : ""}">
+    <div class="gm-card-top"><span>${m.name}</span><button class="gm-lock" data-i="${i}" title="${m.locked ? "解锁该队友" : "锁定该队友"}">${m.locked ? "🔒" : "🔓"}</button></div>
+    <b>${m.level}</b>
+    <div class="gm-track"><i style="width:${m.level}%"></i></div>
+    <button class="gm-reroll" data-i="${i}" ${m.locked ? "disabled" : ""}>刷新该队友</button>
+  </div>`).join("");
+}
+function goldenRecruitTeammates() {
+  return new Promise((resolve) => {
+    let mates = rollGoldenMates();
+    const range = goldenMateRange();
+    const rerollOne = (i) => { if (!mates[i] || mates[i].locked) return; mates[i].level = E.randint(range[0], range[1]); };
+    const render = () => {
+      const avg = mates.reduce((s, m) => s + m.level, 0) / mates.length;
+      main().innerHTML = `
+        <div class="panel-head"><h2>深渊黑马 · 队友招募</h2><p class="sub">作为民间队的发起者，你需要自行招募这次深渊的队友。</p></div>
+        <div class="panel-body">
+          <div class="golden-recruit">
+            <div class="gm-head"><span>民间队阵容</span><b>队友均值 ${avg.toFixed(0)}</b></div>
+            <div class="gm-grid">${goldenMateCards(mates)}</div>
+          </div>
+        </div>
+        <div class="choices">
+          <button class="choice ghost" id="gmRoll"><span class="cl">刷新未锁定队友</span></button>
+          <button class="choice primary" id="gmOk"><span class="cl">确认阵容，进入深渊</span></button>
+        </div>`;
+      main().querySelectorAll(".gm-lock").forEach((b) => { b.onclick = () => { const i = +b.dataset.i; mates[i].locked = !mates[i].locked; render(); }; });
+      main().querySelectorAll(".gm-reroll").forEach((b) => { b.onclick = () => { rerollOne(+b.dataset.i); render(); }; });
+      $("#gmRoll").onclick = () => { mates.forEach((_, i) => rerollOne(i)); render(); };
+      $("#gmOk").onclick = () => resolve(mates.map((m) => ({ name: m.name, level: m.level })));
+    };
+    render();
+  });
+}
+
+function goldenAbyssSignRecord(result) {
+  const data = result && typeof result === "object" ? result : { place: result };
+  const n = Number(data.place);
+  const place = Number.isFinite(n) ? n : 16;
+  if (data.stage === "pre") {
+    const ranges = E.CONFIG && E.CONFIG.GOLDEN && E.CONFIG.GOLDEN.FIRST_ABYSS_TEAM_RANGES;
+    const preRec = Array.isArray(ranges) ? ranges.find((r) => r && r.label === "止步预选赛") : null;
+    return { place, rec: preRec || E.goldenTeamRangeByPlace(99) };
+  }
+  return { place, rec: E.goldenTeamRangeByPlace(place) };
+}
+
+async function goldenSignAfterAbyss(result) {
+  const { place, rec } = goldenAbyssSignRecord(result);
+  P.golden_first_abyss_place = place;
+  P.golden_first_abyss_label = rec.label;
+  const highlightLine = P.role === "监管者" ? "绝活四杀职业队" : "绝活遛穿职业队";
+  const idx = await choose("深渊黑马 · 签约战队", `
+    <p class="flavor">深渊结束后的那几天，你的 ID 反复出现在社交平台。</p>
+    <p class="flavor">有人剪了你的高光集锦：逆风局绝地翻盘、${highlightLine}、最后一局结束时队伍语音里压不住的喊声。也有人说那只是职业队轻敌，是版本答案，是没人研究过你的打法。</p>
+    <p class="flavor">你没来得及慢慢消化这些声音。深渊打完不久，几家职业俱乐部就陆续联系了你。</p>
+    <p class="flavor">他们的问题都差不多：我们很看好你，你愿不愿意试试真正的职业赛场？</p>
+    <p class="muted">本届深渊评价：<b>${rec.label}</b> · 签约后队友基准范围 <b>${rec.range[0]}–${rec.range[1]}</b>。</p>`,
+    [
+      { label: "我本来就是冲这个来的" },
+      { label: "先听听他们怎么说" },
+    ]);
+  const before = snapshotAttrs();
+  const base = E.rnd(rec.range[0], rec.range[1]);
+  let teamDeltaText = "";
+  if (idx === 0) {
+    goldenRawAttr("tech", 2);
+    P.npc_base = E.clamp(base + 5, 40, E.CONFIG.TEAM_NPC_CAP);
+    teamDeltaText = "，队友水平+5";
+  } else {
+    goldenRawAttr("tac", 5);
+    goldenRawAttr("stab", 2);
+    P.npc_base = base;
+  }
+
+  const oldTeam = P.teamName;
+  if (!gameTeams || !Array.isArray(gameTeams.domestic) || !gameTeams.domestic.length) {
+    gameTeams = E.generateTeams(oldTeam, { domesticCount: 10 });
+    gameTeams.meta = E.buildTeamMeta(gameTeams);
+  }
+  const proPool = (gameTeams.domestic || []).filter((t) => t && t !== oldTeam);
+  const sortedPool = proPool.slice().sort((a, b) => teamAvgStrength(b) - teamAvgStrength(a));
+  const targetMid = (rec.range[0] + rec.range[1]) / 2;
+  const fitPool = proPool.slice().sort((a, b) => Math.abs(teamAvgStrength(a) - targetMid) - Math.abs(teamAvgStrength(b) - targetMid));
+  const newTeam = idx === 0
+    ? (sortedPool[0] || proPool[0] || "InStar")
+    : (fitPool[0] || proPool[0] || "InStar");
+  await say("签约战队 · 选择已确认", idx === 0
+    ? `<p>你选择了当前实力最强的战队，毫不犹豫地接受了他们的试训邀请。你心里很清楚，深渊不是终点，只是你让他们看见你的方式。</p>`
+    : `<p>你没有急着做出决定，而是回去后仔细研究了每一支战队的情况，以及他们对你不同的期待。最终，你选择了心目中最适合你的战队。</p>`, "继续");
+
+  if (gameTeams) {
+    for (const key of ["domestic", "cn"]) {
+      if (Array.isArray(gameTeams[key])) { gameTeams[key] = gameTeams[key].filter((t) => t !== newTeam); }
+    }
+    if (Array.isArray(gameTeams.amateur) && oldTeam && !gameTeams.amateur.includes(oldTeam)) { gameTeams.amateur.push(oldTeam); }
+  }
+  P.golden_amateur_team = oldTeam;
+  P.renameTeam(newTeam);
+  P.npc_growth = 0; P.npc_offset = 0; P.teammate_settle_years = 0;
+  P.is_starter = true; P.ever_starter = true; P.golden_opening_done = true;
+  P._clamp();
+  if (gameTeams) { gameTeams.meta = E.buildTeamMeta(gameTeams); }
+  renderHUD();
+  pushLog(`深渊后签约：${oldTeam} → ${P.teamName}（${rec.label}评价）。`, "good");
+  await say("签约完成 · 职业赛场", `
+    <p class="ok">${trainingDeltaText(before)}${teamDeltaText}</p>`, `恭喜你成功签约（${htmlEscape(P.teamName)}）`);
+}
+
+async function goldenOpeningFlow() {
+  if (!P || !E.isGoldenPlayer(P) || P.golden_opening_done) return;
+  setStage("深渊黑马·初登场");
+  const mates = await goldenRecruitTeammates();
+  P.golden_amateur_mates = mates;
+  P.npc_base = mates.reduce((s, m) => s + m.level, 0) / mates.length;
+  P.npc_growth = 0; P.npc_offset = 0;
+  renderHUD();
+  P.golden_shout = await goldenShoutPrompt();
+  await say("深渊黑马 · 赛前喊话", `<p class="flavor">“${htmlEscape(P.golden_shout)}”</p>`, "进入深渊");
+  const result = await playAbyss(false);
+  await goldenSignAfterAbyss(result);
+}
+
+async function goldenProDebutEvent() {
+  if (!E.isGoldenPlayer(P) || goldenSeen("职业首秀")) return;
+  goldenMark("职业首秀");
+  const idx = await choose("深渊黑马 · 职业首秀", `
+    <p class="flavor">职业首秀前的休息室比你想象中安静。</p>
+    <p class="flavor">教练在白板上写着对手的常用阵容，队友低头玩手机，工作人员在门口确认流程。你能听见场馆外面的声音，主持人念到你的 ID 时，观众席里起了一阵波动。</p>
+    <p class="flavor">深渊黑马。</p>
+    <p class="flavor">这个称呼跟着你进了职业赛场。它好听，也好沉。所有人都想知道，那些精彩的对局在你进入职业后还能不能重现。</p>
+    <p class="flavor">教练合上战术本，看向你：“第一把别太紧张，你想怎么打？”</p>`,
+    [
+      { label: "选择最吃操作的角色主动抗压" },
+      { label: "稳扎稳打，听从指挥" },
+    ]);
+  const before = snapshotAttrs();
+  P.golden_pro_debut_choice = idx;
+  P.golden_pro_debut_resolved = false;
+  if (idx === 1) { goldenRawAttr("stab", 2); goldenRawAttr("tac", 2); }
+  P._clamp(); renderHUD();
+  pushLog(`深渊黑马剧情：职业首秀。`, "good");
+  await say("职业首秀 · 选择已确认", idx === 0
+    ? `<p>这是你大显身手的机会，你一定要站在镜头中央。</p><p class="muted">首场比赛获胜时人气+10；失败时稳定-2。</p>`
+    : `<p>你选择慢慢来，先熟悉职业赛场的节奏。</p>${goldenDeltaText(before)}<p class="muted">首场比赛获胜时人气不变；失败时人气-2。</p>`, "继续");
+}
+
+async function goldenResolveProDebut(firstWin) {
+  if (!E.isGoldenPlayer(P) || P.golden_pro_debut_resolved || P.golden_pro_debut_choice == null || firstWin == null) return;
+  const before = snapshotAttrs();
+  if (P.golden_pro_debut_choice === 0) {
+    if (firstWin) goldenRawPop(10);
+    else goldenRawAttr("stab", -2);
+  } else if (!firstWin) {
+    goldenRawPop(-2);
+  }
+  P.golden_pro_debut_resolved = true;
+  P._clamp(); renderHUD();
+  await say("职业首秀 · 赛果反馈", firstWin
+    ? `<p>第一场比赛顺利拿下，深渊黑马的名字继续留在镜头中央。</p>${goldenDeltaText(before)}`
+    : `<p>第一场比赛没能取胜，真正的职业赛场给了你一个冷静下来的理由。</p>${goldenDeltaText(before)}`, "继续");
+}
+
+async function goldenRolePoolEvent() {
+  if (!E.isGoldenPlayer(P) || goldenSeen("练角色的痛")) return;
+  goldenMark("练角色的痛");
+  const idx = await choose("深渊黑马 · 练角色的痛", `
+    <p class="flavor">训练赛复盘开了很久。教练把你的几个招牌角色单独拎出来，问题很明显：打法思路太固定，太喜欢博弈。虽然表现尚可，但很容易被对面针对。</p>
+    <p class="flavor">“民间队的时候没有专人帮你训练。”教练说，“现在不一样了。”</p>
+    <p class="flavor">你看着屏幕上依旧在播放着的对局录像。那些曾经帮你赢下比赛的老伙计，在职业对手眼中，都是可以针对的活靶子。</p>
+    <p class="flavor">你得练新的角色，也得练新的打法。</p>`,
+    [
+      { label: "听从教练的建议扩充角色池" },
+      { label: "继续钻研绝活" },
+    ]);
+  const before = snapshotAttrs();
+  if (idx === 0) { goldenRawAttr("tac", 2); goldenRawAttr("tech", -2); goldenStabCapAdd(10); }
+  else { goldenRawAttr("tech", 2); }
+  P._clamp(); renderHUD();
+  await say("练角色的痛 · 结果", idx === 0
+    ? `<p>你开始把训练时间分给更多角色。刚开始手感不算顺，但至少没人能只靠一页资料读完你。</p>${goldenDeltaText(before)}<p class="ok">稳定性上限+10</p>`
+    : `<p>你没有急着丢掉老东西。所有人都知道你会这么打，那就把它练到他们知道也拦不住。</p>${goldenDeltaText(before)}`, "继续");
+}
+
+async function goldenRankVsMatchEvent() {
+  if (!E.isGoldenPlayer(P) || goldenSeen("比赛与排位的张力")) return;
+  goldenMark("比赛与排位的张力");
+  const idx = await choose("深渊黑马 · 比赛与排位的张力", `
+    <p class="flavor">排位里，大部分时间你只需要抢节奏，大胆博弈，输了就输了，没什么大不了。</p>
+    <p class="flavor">比赛里，答案却没这么简单。</p>
+    <p class="flavor">你想去给压力，队友在语音里提醒你等技能；你觉得能靠个人操作换节奏，教练赛前却反复说这一局求稳为主。每一次选择都不再只关乎个人，它会牵动整支队伍节奏、资源与输赢。</p>
+    <p class="flavor">训练结束后，队友把耳机摘下来，半开玩笑地说：“你排位打得是猛，但比赛里我们几个心脏遭不住，看得快进ICU了。”</p>`,
+    [
+      { label: "节奏是抢出来的" },
+      { label: "比赛还是要稳中求进" },
+    ]);
+  const before = snapshotAttrs();
+  if (idx === 0) { goldenRawAttr("tech", 3); goldenRawAttr("tac", -1); goldenRawAttr("stab", -2); }
+  else { goldenRawAttr("tech", -1); goldenRawAttr("stab", 2); }
+  P._clamp(); renderHUD();
+  await say("比赛与排位的张力 · 结果", idx === 0
+    ? `<p>你还是相信自己的判断。那种突然撕开局面的能力，是你从民间队带来的东西。</p>${goldenDeltaText(before)}`
+    : `<p>你决定少赌一点。能赢得漂亮当然好，但职业比赛先要把该拿的分拿住。</p>${goldenDeltaText(before)}`, "继续");
+}
+
+async function goldenTargetedEvent() {
+  if (!E.isGoldenPlayer(P) || goldenSeen("被职业队研究")) return;
+  goldenMark("被职业队研究");
+  const idx = await choose("深渊黑马 · 被职业队研究", `
+    <p class="flavor">这几个赛季打下来，你明显感觉到BP越来越难受了，对手仿佛早已把你看透，不是绝活被ban，就是被克制。训练室里，教练把你单独留下来讨论对策：</p>`,
+    [
+      { label: "那我们也研究他们" },
+      { label: "临时换一套打法" },
+      { label: "以不变应万变" },
+    ]);
+  const before = snapshotAttrs();
+  if (idx === 0) { goldenRawAttr("tac", 3); }
+  else if (idx === 1) { goldenRawAttr("tech", 3); }
+  else { goldenRawAttr("stab", 3); }
+  P._clamp(); renderHUD();
+  await say("被职业队研究 · 结果", [
+    `<p>你和教练组一起反拆对手的针对方案。</p>${goldenDeltaText(before)}`,
+    `<p>你决定剑走偏锋，出奇制胜。</p>${goldenDeltaText(before)}`,
+    `<p>你没有改太多东西。被研究不是坏事，至少说明他们怕你。</p>${goldenDeltaText(before)}`,
+  ][idx], "继续");
+}
+
+async function goldenOldFriendEvent() {
+  if (!E.isGoldenPlayer(P) || goldenSeen("民间队旧友")) return;
+  goldenMark("民间队旧友");
+  const friendDefault = E.choiceOf(["OldMate", "Echo", "Lumi", "Kira", "Milo", "Aki"]);
+  const friend = await textPrompt({
+    step: "深渊黑马 · 民间队旧友",
+    sub: "训练结束后，你收到一条消息。头像是你第一次深渊比赛时的队标。你的好友叫做：",
+    inputId: "goldenFriend",
+    btnId: "goldenFriendOk",
+    placeholder: friendDefault,
+    fallback: friendDefault,
+    maxlen: 12,
+  });
+  const level = E.randint(45, 70);
+  P.golden_old_friend = { id: friend, level };
+  const idx = await choose("深渊黑马 · 民间队旧友", `
+    <p class="flavor">训练结束后，你收到一条消息。头像是你第一次深渊比赛时的队标。你的好友叫做：<b>${htmlEscape(friend)}</b>，水平数值为 <b>${level}</b>。</p>
+    <p class="flavor">你回想起自己的第一次深渊之旅，来自五湖四海的同伴，怀揣着青涩的梦想，渴望站上这个游戏最高的舞台。</p>
+    <p class="flavor">屏幕上，${htmlEscape(friend)} 发来问候：“好久不见，打职业的感觉怎么样？”</p>
+    <p class="muted">旧友当前水平：<b>${level}</b> · 当前队友均值：<b>${P.teamNpc(curYear).toFixed(0)}</b></p>`,
+    [
+      { label: "问问他要不要来试训" },
+      { label: "约他直播连麦聊聊深渊" },
+      { label: "不理会，别来沾边" },
+    ]);
+  if (idx === 0) {
+    if (level >= P.teamNpc(curYear)) {
+      P.golden_old_friend_joined = true;
+      P.golden_old_friend_team = P.teamName;
+      P.golden_old_friend_invalid = false;
+      renderHUD();
+      await say("民间队旧友 · 试训成功", `<p>或许是感受到了他对职业的渴望，你询问教练是否可以让他来试训，得到了肯定的答复后，你把俱乐部试训信息发了过去。也许不是每个人都能走到这里，但你想给他一个机会。</p><p class="ok">${htmlEscape(friend)} 试训成功，加入战队。</p>`, "继续");
+    } else {
+      await say("民间队旧友 · 试训未通过", `<p>或许是感受到了他对职业的渴望，你询问教练是否可以让他来试训，得到了肯定的答复后，你把俱乐部试训信息发了过去。也许不是每个人都能走到这里，但你想给他一个机会。</p><p class="muted">${htmlEscape(friend)} 的水平暂未达到战队平均值，试训未通过。</p>`, "继续");
+    }
+  } else if (idx === 1) {
+    const before = snapshotAttrs();
+    goldenRawPop(10); renderHUD();
+    await say("民间队旧友 · 直播连麦", `<p>老队友一开麦，弹幕立刻炸开了锅。直播间很快热闹起来。</p>${goldenDeltaText(before)}`, "继续");
+  } else {
+    await say("民间队旧友 · 未读消息", `<p>你把手机扣在桌上。不是不想回，只是你还没想好该怎么面对。</p>`, "继续");
+  }
+}
+
+async function goldenQuestionedEvent() {
+  if (!E.isGoldenPlayer(P) || goldenSeen("伤仲永")) return;
+  goldenMark("伤仲永");
+  const playerId = htmlEscape(P.playerId || P.name || "玩家ID");
+  const idx = await choose("深渊黑马 · 伤仲永", `
+    <p class="flavor">输掉比赛的当晚，热搜词条挂得很刺眼。</p>
+    <p class="flavor">“${playerId}是不是被研究透了？”</p>
+    <p class="flavor">有人说你只是吃了版本红利，有人说民间队打法本来就不适合职业赛场。还有人把你深渊时期的高光和最近几场失误剪在一起，标题写得很难听：天才新人，查无此人。</p>
+    <p class="flavor">你关掉手机，训练室里只剩设备风扇的声音。</p>
+    <p class="flavor">职业赛场不会一直为一次奇迹买单。想留下来，就得再赢一次。</p>`,
+    [
+      { label: "闭麦训练，先把手感找回来" },
+      { label: "接受采访，正面回应" },
+      { label: "找教练复盘打法体系" },
+    ]);
+  const before = snapshotAttrs();
+  if (idx === 0) { goldenRawAttr("tech", 3); }
+  else if (idx === 1) { goldenRawAttr("stab", 2); }
+  else { goldenRawAttr("tac", 3); }
+  P._clamp(); renderHUD();
+  await say("伤仲永 · 结果", [
+    `<p>你没有回应任何采访。接下来几天，训练室最后一个关灯的人都是你。</p>${goldenDeltaText(before)}`,
+    `<p>你坐到镜头前，把那些质疑摊开说。话说出口很轻，压在身上却不轻。</p>${goldenDeltaText(before)}`,
+    `<p>你承认问题不只是失误。黑马打法想继续赢，就得换一种活法。</p>${goldenDeltaText(before)}`,
+  ][idx], "继续");
+}
+
+async function goldenAbyssReturnEvent() {
+  if (!E.isGoldenPlayer(P) || !P.golden_opening_done || goldenSeen("重返深渊")) return;
+  goldenMark("重返深渊");
+  await say("深渊黑马 · 重返深渊", `
+    <p class="flavor">你再次站上了深渊淘汰赛的舞台。你听见解说提起你的第一次深渊比赛。那段故事太好讲了：民间队、绝活、淘汰职业战队。只是这一次，大家的语气谨慎了很多。</p>
+    <p class="flavor">“${htmlEscape(P.playerId || P.name)}进入职业赛场一年了，重返深渊赛场，ta是否会有更加精彩的表现呢？”</p>
+    <p class="flavor">你擦着手粉，忽然觉得这个问题挺熟悉。这些来自外界的，或满怀期许，或幸灾乐祸的目光，从你进职业赛场那天起，就一直跟着你，期待着你证明自己。</p>`, "开始比赛");
+}
+
+function otherCampRandomRole() {
+  const CG = window.IVLChargen;
+  if (!CG || !CG.ROLE_POOL) return P.role === "监管者" ? "机械师" : "红蝶";
+  const keys = P.role === "监管者" ? ["qz", "jr", "ob", "fz"] : ["zj", "kc", "sy"];
+  const all = [];
+  keys.forEach((k) => {
+    const pool = CG.ROLE_POOL[k] || {};
+    (pool.rec || []).concat(pool.opt || []).forEach((r) => { if (!all.includes(r)) all.push(r); });
+  });
+  return all.length ? E.choiceOf(all) : (P.role === "监管者" ? "机械师" : "红蝶");
+}
+
+async function goldenAbyssChampionEvent() {
+  if (!E.isGoldenPlayer(P) || !P.golden_opening_done || goldenSeen("深渊夺冠")) return;
+  goldenMark("深渊夺冠");
+  const before = snapshotAttrs();
+  await choose("深渊黑马 · 深渊夺冠", `
+    <p class="flavor">最后一局结束时，你没有立刻站起来。</p>
+    <p class="flavor">屏幕上跳出胜利结算，解说已经在激情澎湃地念冠军贺词，队友们已经冲上舞台，有人拍你的肩，有人已经冲过去抱住教练。场馆里的声音一层一层涌上来，你却慢了半拍才反应过来。</p>
+    <p class="flavor">全球总冠军。</p>
+    <p class="flavor">这是你梦寐以求的荣誉，是你从前可望而不可及的山峰。回想起自己作为民间队选手参加深渊时，每赢一场比赛都像是恩赐。那时候，你有想过会有一天捧起属于自己的冠军奖杯吗？</p>`,
+    [{ label: "与队友一起捧起冠军奖杯" }]);
+  goldenStabCapAdd(10);
+  P._clamp(); renderHUD();
+  await say("深渊夺冠 · 结果", `<p>你举起奖杯，灯光晃得眼睛发热。台下观众呼喊着你的 ID，一声接一声，像海浪，像梦一样。</p><p class="ok">稳定性上限+10</p>${goldenDeltaText(before)}`, "继续");
+  const roles = (P.commonRoles && P.commonRoles.length) ? P.commonRoles : ["你的招牌角色"];
+  const idx = await choose("深渊黑马 · 深渊冠军皮", `
+    <p class="flavor">冠军皮肤是深渊冠军的荣誉之一。赛后，大家热火朝天地商讨着冠军皮的选角，你打算把这个特殊的皮肤给哪一个角色？</p>`,
+    roles.map((r) => ({ label: r })));
+  const chosen = roles[idx] || roles[0];
+  const partner = otherCampRandomRole();
+  if (!Array.isArray(P.golden_champion_skins)) { P.golden_champion_skins = []; }
+  P.golden_champion_skins.push({ year: curYear, main: chosen, partner });
+  await say("深渊冠军皮 · 选角确认", `<p>你们商讨后，决定把冠军皮肤给<b>${htmlEscape(chosen)}</b>和<b>${htmlEscape(partner)}</b>。</p>`, "继续");
+}
+
+async function goldenEpilogueEvent() {
+  if (!E.isGoldenPlayer(P) || goldenSeen("终章")) return;
+  goldenMark("终章");
+  await say("深渊黑马 · 终章", `
+    <p class="flavor">最开始，人们叫你黑马，是因为没人知道你会从哪里冲出来。</p>
+    <p class="flavor">后来，他们研究你、质疑你、期待你失误，也终于不得不承认：真正难的不是被看见，而是在被看见之后继续赢下去。</p>`, "查看生涯战报");
 }
 
 /* ====================== 赛季目标面板 + 伤病风险预警 ===================== */
@@ -791,7 +1208,7 @@ async function shopPhase() {
     P.has_wrist = false; P.has_checkup = false; P.redo_token = 0; P.has_seal = false; P.serum_active = false;
     P.stamina = P.stamina_max;            // v4.0：进商店（开局/每年）体力直接给满
     renderHUD();
-    const stock = E.buildShopStock();
+    const stock = E.buildShopStock(P);
     // demov4.2feedback《转会优化·自由转会》：资金超过 30000 且尚未拥有合同时，商店刷出「你的合同」。
     if (P.money > 30000 && !P.own_contract) {
       stock.push({
@@ -1035,6 +1452,9 @@ async function regularSeason(kind) {
   const res = await runRegularSeasonScreen(kind);   // {rank, inPlayoff, wins}
   P.recent_perf = res.wins / 9.0;
   pushLog(`${kind}季赛常规赛：${res.wins}胜，第 ${res.rank} 名，${res.inPlayoff ? "晋级季后赛" : "无缘季后赛"}。`, res.inPlayoff ? "good" : "bad");
+  if (E.isGoldenPlayer(P) && curYear === 1 && kind === "夏") {
+    await goldenResolveProDebut(res.firstWin);
+  }
   return res;
 }
 
@@ -1461,7 +1881,7 @@ function runRegularSeasonScreen(kind) {
 
     // ---- 收尾 ----
     function teardown() { document.removeEventListener('keydown', onKey); const el = document.getElementById('rs-root'); if (el) el.remove(); }
-    function onContinue() { const r = { rank, inPlayoff, wins, standings: standings ? standings.map(s => s.name) : null }; teardown(); resolve(r); }
+    function onContinue() { const r = { rank, inPlayoff, wins, firstWin: results[0] ? !!results[0].win : null, standings: standings ? standings.map(s => s.name) : null }; teardown(); resolve(r); }
     function onKey(e) { if (e.key === 'Escape') { ['evtModal', 'bagModal', 'qualifyModal', 'attrModal'].forEach(id => rq(id) && rq(id).classList.remove('show')); } }
 
     // ---- 接线 ----
@@ -1492,7 +1912,7 @@ function runRegularSeasonScreen(kind) {
       }
       const rows = buildLeagueStandings(headlessResults);
       const rk = rows.findIndex(r => r.player) + 1;
-      resolve({ rank: rk, inPlayoff: rk <= 6, wins: w, standings: rows.map(r => r.name) });
+      resolve({ rank: rk, inPlayoff: rk <= 6, wins: w, firstWin: headlessResults[0] ? !!headlessResults[0].win : null, standings: rows.map(r => r.name) });
     }
   });
 }
@@ -1613,14 +2033,18 @@ function abyssPool() {
 async function playDomestic(kind) {
   await competitionInjury(`${kind}季赛`);
   const { rank, inPlayoff, standings } = await regularSeason(kind);
+  P._last_domestic_in_playoff = !!inPlayoff;
+  P._last_domestic_playoff_wins = 0;
   if (!inPlayoff) { E.endCompetition(P); return 8; }
   P.playoff_count += 1;
+  if (E.isGoldenPlayer(P) && curYear === 1) { P.golden_first_pro_year_playoff = true; }
   // v4.1（demov4.1feedback）：删除「进入季后赛」过场页——晋级直接进季后赛晋级图，未晋级直接回训练。
   // 双败季后赛为「晋级图」UI（移植 demo10-季后赛ui），赛果仍由真实 playMatch 驱动。
   setStage(`${kind}季赛·双败季后赛`);
   const spec = buildSeasonSpec(kind, rank, standings);
   // v4.1：整屏「晋级图」UI 复刻 demo10-季后赛ui；玩家场走真实引擎结算，弹窗内含战报 + 颁奖。
-  const { place } = await runKnockoutScreen(spec);
+  const { place, playerWins } = await runKnockoutScreen(spec);
+  P._last_domestic_playoff_wins = playerWins || 0;
   E.endCompetition(P);
   return place;
 }
@@ -1682,7 +2106,7 @@ async function playAbyss(seeded) {
       pushLog("深渊预选出局。", "bad"); P.recent_perf = 0.1;
       // demov4.1feedback2·深渊战报：没进淘汰赛——简化为本队深渊排名 + 查看完整排名弹窗 / 继续。
       await abyssEliminatedScreen("止步预选赛 · 未进小组", 16);
-      E.endCompetition(P); return;
+      E.endCompetition(P); return { place: 16, stage: "pre", label: "止步预选赛" };
     }
   }
 
@@ -1694,11 +2118,14 @@ async function playAbyss(seeded) {
   const ties = otherWins.filter(w => w === grp.wins).length;
   const groupRank = Math.min(5, 1 + better + E.randint(0, ties));
   if (groupRank > 3) {
-    // demov4.1feedback2·深渊战报：没进淘汰赛——不再罗列逐场战报，简化为本队深渊排名 + 查看完整排名弹窗 / 继续。
+    // 小组赛失败也先展示 4 场战报，再进入本队深渊排名 + 查看完整排名弹窗。
+    await say("深渊 · 小组赛战报", `<div class="gamelog stream">${grp.lines.join("")}</div>${reasonHtml(grp.lastReason)}
+      <p class="summary">小组赛 <b>${grp.wins} 胜 ${4 - grp.wins} 负</b>，小组 <b>第 ${groupRank} 名</b>，未能进入淘汰赛。</p>`,
+      "查看最终排名");
     pushLog("深渊小组赛出局（第 " + groupRank + " 名）。", "bad"); P.recent_perf = grp.wins / 4.0;
     E.settlePlace(P, "深渊", 13);   // 名次资金（与原结算等额，静默处理）
     await abyssEliminatedScreen(`第 13–16 名（小组第 ${groupRank}）`, 13);
-    E.endCompetition(P); return;
+    E.endCompetition(P); return { place: 13, stage: "group", label: "小组赛" };
   }
   await say("深渊 · 小组赛战报", `<div class="gamelog stream">${grp.lines.join("")}</div>${reasonHtml(grp.lastReason)}
     <p class="summary">小组赛 <b>${grp.wins} 胜 ${4 - grp.wins} 负</b>，小组 <b>第 ${groupRank} 名</b>（前 3 进淘汰赛）。</p>
@@ -1708,10 +2135,13 @@ async function playAbyss(seeded) {
   // v4.1：深渊淘汰赛改为「晋级图」UI（移植 demo10-深渊ui）。小组第 1 直进 8 强、第 2/3 先打
   // 12 进 8；晋级图由真实 playMatch 结算驱动，NPC 场为展示模拟，名次语义与历史一致。
   setStage("深渊·淘汰赛");
+  await goldenAbyssReturnEvent();
   const koSpec = buildAbyssSpec(groupRank);
   // v4.1：整屏「晋级图」UI 复刻 demo10-深渊ui；玩家场走真实引擎结算，弹窗内含战报 + 颁奖。
-  await runKnockoutScreen(koSpec);
+  const out = await runKnockoutScreen(koSpec);
+  if (out.place === 1) { await goldenAbyssChampionEvent(); }
   E.endCompetition(P);
+  return { place: out.place, stage: "ko", label: koSpec.placeLabel(out.place), fList: out.fList };
 }
 /* demov4.1feedback2·深渊战报：完整排名弹窗（所有队伍深渊排名，复用 standingsHtml 的 16 强排版）。 */
 function ensureRankModal() {
@@ -2039,6 +2469,8 @@ function trainingDeltaText(b) {
 async function yearIntro() {
   setStage("赛年开始");
   P.negative_news = false;                  // 负面新闻随时间(新赛年)消散
+  let goldenDrift = null;
+  if (E.isGoldenPlayer(P) && curYear > 1) { goldenDrift = E.applyGoldenSeasonDrift(P); }
   // demov4.2feedback《自由转会》：合同有效期逐年递减（到期后恢复被动转会、失去自由转会额度）。
   if (curYear > 1 && P.contract_years_left > 0) {
     P.contract_years_left -= 1;
@@ -2051,6 +2483,7 @@ async function yearIntro() {
   else { P.advanceTeammate(); }             // 队友逐年成长（保底 +1、战术额外加点，合计 1~4/年，静默累积）
   await say(`第${curYear}赛年（${curAge} 岁）`, `
     <p>新的一年开始了。商店已刷新，负面新闻随时间消散。</p>
+    ${goldenDrift ? `<p class="muted">深渊黑马模式水平波动：技术 ${goldenDrift.tech >= 0 ? "+" : ""}${goldenDrift.tech}、战术 ${goldenDrift.tac >= 0 ? "+" : ""}${goldenDrift.tac}、体能 ${goldenDrift.phys >= 0 ? "+" : ""}${goldenDrift.phys}、稳定 ${goldenDrift.stab >= 0 ? "+" : ""}${goldenDrift.stab}。</p>` : ""}
     ${curYear >= 4 ? `<p class="muted">已进入成长衰减期：技术/体能成长 ×${E.growthTech(curYear).toFixed(2)}，战术 ×${E.growthTac(curYear).toFixed(2)}。靠道具/事件补满属性更重要。</p>` : ""}`, "查看赛季目标");
 }
 
@@ -2126,26 +2559,45 @@ async function career(startYear = 1) {
       await seasonGoalPanel();
       await shopPhase();
       await commercialRestOffer();
+      if (E.isGoldenPlayer(P) && curYear === 2) { await goldenRankVsMatchEvent(); }
 
       const yc = new Set();
       let summerRank = 8, autumnRank = 8;
+      let summerMissedPlayoff = false, autumnMissedPlayoff = false;
+      let summerPlayoffNoWin = false, autumnPlayoffNoWin = false;
 
       setYearPhase(0);
       const n1 = (P.identity === "青训" && curYear === 1) ? 7 : (P.rest_active ? E.CONFIG.REST_TRAIN_N : 5);
       await trainingPeriod(n1, "训练① · 季前");
 
       setYearPhase(1);
-      if (await selection("夏季赛")) { const b = P.champ["夏"]; summerRank = await playDomestic("夏"); if (P.champ["夏"] > b) yc.add("夏"); }
+      if (E.isGoldenPlayer(P) && curYear === 1) { await goldenProDebutEvent(); }
+      if (await selection("夏季赛")) {
+        const b = P.champ["夏"];
+        summerRank = await playDomestic("夏");
+        summerMissedPlayoff = !P._last_domestic_in_playoff;
+        summerPlayoffNoWin = !!P._last_domestic_in_playoff && (P._last_domestic_playoff_wins || 0) <= 0;
+        if (P.champ["夏"] > b) yc.add("夏");
+      }
       await transferWindow("夏季赛后");
+      if (E.isGoldenPlayer(P) && curYear === 3) { await goldenOldFriendEvent(); }
 
       setYearPhase(2);
       if (summerRank <= 2 && P.is_starter) { const b = P.champ["IVS"]; await playIVS(); if (P.champ["IVS"] > b) yc.add("IVS"); }
 
       setYearPhase(3);
+      if (E.isGoldenPlayer(P) && curYear === 1) { await goldenRolePoolEvent(); }
+      if (E.isGoldenPlayer(P) && curYear === 2) { await goldenTargetedEvent(); }
       await trainingPeriod(P.rest_active ? E.CONFIG.REST_TRAIN_N : 5, "训练② · 夏秋之间");
 
       setYearPhase(4);
-      if (await selection("秋季赛")) { const b = P.champ["秋"]; autumnRank = await playDomestic("秋"); if (P.champ["秋"] > b) yc.add("秋"); }
+      if (await selection("秋季赛")) {
+        const b = P.champ["秋"];
+        autumnRank = await playDomestic("秋");
+        autumnMissedPlayoff = !P._last_domestic_in_playoff;
+        autumnPlayoffNoWin = !!P._last_domestic_in_playoff && (P._last_domestic_playoff_wins || 0) <= 0;
+        if (P.champ["秋"] > b) yc.add("秋");
+      }
 
       setYearPhase(5);
       await trainingPeriod(P.rest_active ? E.CONFIG.REST_TRAIN_N : 5, "训练③ · 深渊前");
@@ -2166,6 +2618,13 @@ async function career(startYear = 1) {
       await annualAwards();
       if (P.rest_active) { P.addPop(E.rnd(...E.CONFIG.REST_POP_RANGE)); P.rest_year_count += 1; }
       await yearSettle();
+
+      if (E.isGoldenPlayer(P)) {
+        P.golden_no_champ_years = yc.size === 0 ? (P.golden_no_champ_years || 0) + 1 : 0;
+        if (summerMissedPlayoff || autumnMissedPlayoff || summerPlayoffNoWin || autumnPlayoffNoWin || P.golden_no_champ_years >= 2) {
+          await goldenQuestionedEvent();
+        }
+      }
 
       for (const name of E.specialTriggers(P, curYear)) {
         if (P.offered.has(name)) continue;
@@ -2190,6 +2649,7 @@ async function career(startYear = 1) {
 /* ============================== 结局 ================================== */
 async function ending(grandSlam, forced, fullCareer) {
   setStage("生涯落幕");
+  await goldenEpilogueEvent();
   // 生涯已落幕:清除单槽续局存档(图鉴 / 战报仍照常 persistRun)。
   clearRun();
   // demov4.1feedback·结算界面：结算页隐藏左侧边栏，战报卡占满主区。
@@ -2206,6 +2666,7 @@ async function ending(grandSlam, forced, fullCareer) {
   const rec = {
     v: 3, name: P.name, playerId: P.playerId, teamName: P.teamName,
     role: P.role, idShort: idShort(P), final: finalName, kind: isForced ? "forced" : (isSpecial ? "special" : "final"),
+    golden: E.isGoldenPlayer(P), golden_first_abyss_label: P.golden_first_abyss_label || "", golden_champion_skins: P.golden_champion_skins || [],
     fullCareer, year: curYear, tech: P.tech, tac: P.tac, phys: P.phys, stab: P.stab,
     appearance: P.appearance, luck: P.luck, pop: P.pop, money: P.money,
     champ: { ...P.champ }, runnerups: P.runnerups, thirds: P.thirds, fmvp_total: P.fmvp_total,
@@ -2337,7 +2798,7 @@ function warCardHtml(rec, isForced) {
           <div class="sc-sechead between"><div class="left"><span class="bar"></span><h3>已达成就</h3></div><div class="prog">本档解锁 <b>${rec.achs.length}</b> / ${allA}</div></div>
           <div class="chips">${chips}</div>
         </div>
-        <div class="sc-foot"><span class="tip">📸 截图保存这张战报卡，晒到同人圈吧！</span><span class="sc-date">${rec.date} · #IVL模拟器 v5.2</span></div>
+        <div class="sc-foot"><span class="tip">📸 截图保存这张战报卡，晒到同人圈吧！</span><span class="sc-date">${rec.date} · #IVL模拟器 v6.0</span></div>
       </div>
     </div>`;
 }
@@ -2354,9 +2815,12 @@ function warCardText(rec) {
     `冠军 ${champLine} · 亚${rec.runnerups}/季${rec.thirds} · FMVP ${rec.fmvp_total}`,
   ];
   if (rec.spotlights.length) lines.push(`名场面：${rec.spotlights.join("、")}`);
+  if (rec.golden && rec.golden_champion_skins && rec.golden_champion_skins.length) {
+    lines.push(`深渊冠军皮：${rec.golden_champion_skins.map((s) => `${s.main}/${s.partner}`).join("、")}`);
+  }
   lines.push(`解锁成就（${rec.achs.length}）：${rec.achs.join("、") || "无"}`);
-  lines.push(`#IVL模拟器 v5.2`);
-  return lines.join("\n");
+  lines.push(`#IVL模拟器 v6.0`);
+  return lines.filter(Boolean).join("\n");
 }
 
 /* ----------------------- 一键生成战报分享图（v4.2 · demov4.1feedback4） --------------------- *
@@ -2550,7 +3014,7 @@ function renderShareCanvas(rec, qrImg) {
   ctx.font = `600 14px ${FB}`; ctx.fillStyle = "#cfd6e6";
   ctx.fillText("扫码体验 · IVL 模拟器", P, y + 6);
   ctx.font = `400 12px ${FB}`; ctx.fillStyle = "#7c89a3";
-  ctx.fillText(`${rec.date} · #IVL模拟器 v5.2`, P, y + 30);
+  ctx.fillText(`${rec.date} · #IVL模拟器 v6.0`, P, y + 30);
   ctx.font = `400 11px ${FB}`; ctx.fillStyle = "#5d6884";
   ctx.fillText("长按图片保存到相册分享", P, y + 52);
   y += qrS + 24;
@@ -2858,7 +3322,9 @@ async function boot() {
     if (run) { clearRun(); }
     break;
   }
-  await characterCreation();
+  const goldenUnlocked = (codex.endings || []).length >= 3;
+  await characterCreation(goldenUnlocked);
+  await goldenOpeningFlow();
   await career();
 }
 
@@ -3098,6 +3564,10 @@ function koSynthScore(spec, key, winnerKey) {
 function koResolve(spec, key, winnerKey) {
   koSynthScore(spec, key, winnerKey);
   const node = spec.nodes[key]; node.winner = winnerKey;
+  if (node.slots.includes(spec.playerKey)) {
+    spec._playerMatches = (spec._playerMatches || 0) + 1;
+    if (winnerKey === spec.playerKey) { spec._playerWins = (spec._playerWins || 0) + 1; }
+  }
   const loser = koOther(node, winnerKey), f = spec.feed[key];
   if (f.win) spec.nodes[f.win[0]].slots[f.win[1]] = winnerKey;
   if (f.lose) spec.nodes[f.lose[0]].slots[f.lose[1]] = loser;
@@ -3162,7 +3632,7 @@ function koDecidePlayer(spec, key, r, winOverride) {
 
 /* 冲烟用：无 UI / 无动画跑完整张图，玩家场走真实引擎结算，返回 {place, fList}。 */
 function koRunHeadless(spec, winProb) {
-  spec._fList = []; spec._lastDay = null;
+  spec._fList = []; spec._lastDay = null; spec._playerWins = 0; spec._playerMatches = 0;
   for (const key of spec.order) {
     const node = spec.nodes[key];
     if (node.winner !== null) continue;
@@ -3179,7 +3649,7 @@ function koRunHeadless(spec, winProb) {
     }
   }
   const st = koStandings(spec);
-  return { place: st.indexOf(spec.playerKey) + 1, fList: spec._fList };
+  return { place: st.indexOf(spec.playerKey) + 1, fList: spec._fList, playerWins: spec._playerWins || 0, playerMatches: spec._playerMatches || 0 };
 }
 
 /* ---------- 战报弹窗 HTML（hero + 名次列表）：供 UI 注入与冲烟长度校验 ---------- */
@@ -3376,7 +3846,7 @@ function koOverlayHTML(spec) {
  * 返回 Promise<{place, fList}>，在玩家点「完成，返回生涯」（颁奖弹窗）后 resolve 并销毁 overlay。 */
 function runKnockoutScreen(spec) {
   return new Promise((resolve) => {
-    spec._fList = []; spec._lastDay = null; spec._reward = null;
+    spec._fList = []; spec._lastDay = null; spec._reward = null; spec._playerWins = 0; spec._playerMatches = 0;
     const host = (typeof document !== 'undefined' && document.body) ? document.body : null;
     if (!host) { resolve(koRunHeadless(spec, null)); return; }   // 无 DOM（极端环境）退化为无头结算
     const holder = document.createElement('div');
@@ -3820,7 +4290,15 @@ function runKnockoutScreen(spec) {
       closeFmvpModal();   // demov4.1feedback2：返回生涯时一并收起 FMVP 弹窗
       const el = document.getElementById('koscreen'); if (el) el.remove();
     }
-    kq('cerDone').addEventListener('click', () => { teardown(); resolve({ place: spec._reward ? spec._reward.place : (koStandings(spec).indexOf(spec.playerKey) + 1), fList: spec._fList }); });
+    kq('cerDone').addEventListener('click', () => {
+      teardown();
+      resolve({
+        place: spec._reward ? spec._reward.place : (koStandings(spec).indexOf(spec.playerKey) + 1),
+        fList: spec._fList,
+        playerWins: spec._playerWins || 0,
+        playerMatches: spec._playerMatches || 0,
+      });
+    });
 
     /* --- 测试钩子：供 _uitest / _kotest 在不依赖动画时序时驱动整屏流程 --- */
     if (typeof window !== 'undefined') {

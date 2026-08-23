@@ -217,6 +217,72 @@ for (const [name, cfg] of Object.entries(POLICIES)) {
 }
 console.log("\n对照蒙特卡洛 v2.5（数值 v6.0）：冠军疲劳减负 + 深渊下调后金满贯/全球冠应上升；颜值流量伤重退役仍应被压低(≤~35%)、中层满役结局承接普通周目。");
 
+/* ===================== 深渊黑马身份 · 专项断言 =====================
+ * 目的：新增身份只能影响 p.golden=true 的生涯；青训/主播/人皇旧体验的初始数值口径不能漂移。 */
+(function testGoldenIdentityIsolation() {
+  let fails = 0;
+  const ok = (cond, msg) => { if (!cond) { fails++; console.error("  ✗ " + msg); } };
+  const sum4 = (p) => Math.round(p.tech + p.tac + p.phys + p.stab);
+
+  for (let i = 0; i < 200; i++) {
+    const rookie = new E.Player("青训", "T", "R", "求生者");
+    ok(!rookie.golden && sum4(rookie) === 130 && rookie.money === 1000 && rookie.pop >= 0.8 && rookie.pop <= 2.01, "青训初始口径保持不变");
+    const streamer = new E.Player("主播", "T", "S", "求生者");
+    ok(!streamer.golden && sum4(streamer) === 110 && streamer.money === 3000 && streamer.pop >= 3 && streamer.pop <= 5.01, "主播初始口径保持不变");
+    const king = new E.Player("人皇", "T", "K", "监管者");
+    ok(!king.golden && sum4(king) === 135 && king.money === 1000 && king.pop >= 0.8 && king.pop <= 2.01, "人皇/屠皇初始口径保持不变");
+
+    const g = new E.Player("深渊黑马", "民间队", "Ace", "求生者");
+    ok(E.isGoldenPlayer(g) && g.abyssDarkHorse === true && g.golden === true && g.is_starter === true, "深渊黑马写入模式标记并保持首发状态");
+    ok(sum4(g) === 220, "深渊黑马四维总量 220");
+    ok(["tech", "tac", "phys", "stab"].every((k) => g[k] >= 1 && g[k] <= 100), "深渊黑马四维随机值范围为 1-100");
+    ok(g.stab <= E.CONFIG.GOLDEN.STAB_CAP, "深渊黑马稳定性从不超过 50 的候选值中抽取");
+    ok(g.money === 1500 && g.pop >= 2 && g.pop <= 4.01, "深渊黑马资金/人气初始范围");
+    const cpGolden = g.tech * .30 + g.tac * .25 + g.phys * .15 + g.stab * .30;
+    ok(Math.abs(g.cp - cpGolden) < 1e-9, "深渊黑马使用专属 CP 权重");
+  }
+
+  const normalTeams = E.generateTeams("玩家队");
+  ok(normalTeams.domestic.length === 9 && normalTeams.cn.length === 8, "普通模式大陆 NPC 职业战队为 9 支");
+  const goldenTeams = E.generateTeams("民间队", { domesticCount: 10 });
+  ok(goldenTeams.domestic.length === 10 && goldenTeams.cn.length === 9, "深渊黑马签约前大陆 NPC 职业战队为 10 支");
+  const customTeams = E.generateTeams("玩家队", { domesticCount: 10, domesticNames: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"] });
+  ok(customTeams.domestic.join("/") === "A/B/C/D/E/F/G/H/I/J", "自定义大陆 NPC 职业战队名称按顺序保存并使用");
+
+  const q = new E.Player("深渊黑马", "N", "A", "求生者");
+  q.golden_first_pro_year_playoff = true;
+  q.champ["夏"] = 1; q.champ["深渊"] = 1;
+  q.golden_old_friend_champ = true;
+  const a = E.computeAchievements(q, false, false, null);
+  ok(a["崭露头角"] && a["顶峰相见"] && a["王朝新立"] && a["这就是我们的羁绊！"], "深渊黑马专属成就条件生效");
+  q.golden_old_friend_invalid = true;
+  ok(!E.computeAchievements(q, false, false, null)["这就是我们的羁绊！"], "深渊黑马旧友羁绊在转会后失效");
+
+  const young = new E.Player("青训", "N", "Y", "求生者");
+  young.champ_per_year[1] = 1;
+  ok(E.computeAchievements(young, false, false, null)["英雄出少年"], "英雄出少年：第一赛年任意冠军触发");
+  const late = new E.Player("青训", "N", "L", "求生者");
+  late.champ_per_year[2] = 1;
+  ok(!E.computeAchievements(late, false, false, null)["英雄出少年"], "英雄出少年：非第一赛年冠军不触发");
+
+  const shopNormal = new E.Player("青训", "N", "S", "求生者");
+  const shopGolden = new E.Player("深渊黑马", "N", "G", "求生者");
+  const rand0 = Math.random;
+  Math.random = () => 0;
+  try {
+    ok(E.buildShopStock(shopNormal).some((it) => it.rare), "普通模式商店仍可刷新极其稀缺商品");
+    ok(!E.buildShopStock(shopGolden).some((it) => it.rare), "深渊黑马模式商店不刷新极其稀缺商品");
+  } finally {
+    Math.random = rand0;
+  }
+
+  const old = E.Player.fromSave({ identity: "青训", teamName: "N", playerId: "A", role: "求生者" });
+  ok(old.golden === false && old.abyssDarkHorse === false && old.golden_events instanceof Set, "老档缺黑马字段时回落为非黑马并补默认 Set");
+
+  if (fails) { throw new Error(`深渊黑马身份专项断言失败:${fails} 项未通过`); }
+  console.log("\n[深渊黑马身份] 专项断言全部通过（新身份隔离 · 初始值 · CP 权重 · 专属成就 · 老档兜底）。");
+})();
+
 /* ===================== 单槽续局存档 · 序列化断言（demov4.3feedback） =====================
  * 覆盖最易出错处:Set 字段还原、getter/方法经原型链幸存、往返数值一致、老档缺字段有默认兜底。
  * 断言失败即抛错(非零退出),不得 TODO 跳过。 */

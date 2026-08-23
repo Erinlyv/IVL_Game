@@ -1,0 +1,21 @@
+{
+  "name": "ivl-game",
+  "version": "6.0.0",
+  "private": true,
+  "description": "IVL simulator static browser game.",
+  "type": "commonjs",
+  "scripts": {
+    "check": "node --check engine.js && node --check game.js && node --check chargen.js && node --check _smoketest.js && node --check _uitest.js && node --check _kotest.js && node --check _gftest.js && node --check _strategyplay.js",
+    "test:smoke": "node _smoketest.js 2000",
+    "test:ui": "node _uitest.js 2",
+    "test:ko": "node _kotest.js",
+    "test:gf": "node _gftest.js",
+    "test": "npm run check && npm run test:smoke && npm run test:ui && npm run test:ko && npm run test:gf"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
