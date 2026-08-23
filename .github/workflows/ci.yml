@@ -7,9 +7,12 @@ on:
     branches: [main]
 
 # 纯静态前端、零运行时依赖：CI 仅在 Node 下跑自测脚本。
-# _uitest / _kotest / _gftest 依赖 jsdom（仅测试期），按需临时安装、不写入仓库。
+# _uitest / _kotest / _gftest 依赖 jsdom（仅测试期），由 package-lock 固定版本。
 # 注：_strategyplay.js 是本地攻略实测实验（jsdom 全生涯驱动、无平衡断言、约 2.5 min/生涯），
 #     不纳入 CI 门禁；崩溃回归已由 _uitest 覆盖。需要时本地手动跑：node _strategyplay.js [N]。
+permissions:
+  contents: read
+
 jobs:
   test:
     name: 自测脚本（冒烟 / UI / KO / 冠亚决赛）
@@ -21,29 +24,23 @@ jobs:
       - name: 安装 Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
+          cache: npm
+
+      - name: 安装测试依赖
+        run: npm ci
 
       - name: JS 语法检查
-        run: |
-          node --check engine.js
-          node --check game.js
-          node --check chargen.js
-          node --check _smoketest.js
-          node --check _uitest.js
-          node --check _kotest.js
-          node --check _gftest.js
-
-      - name: 安装测试依赖（jsdom，仅测试期）
-        run: npm install --no-save jsdom
+        run: npm run check
 
       - name: 冒烟测试（engine 自动重跑生涯）
-        run: node _smoketest.js 2000
+        run: npm run test:smoke
 
       - name: UI 冒烟（jsdom 跑通完整生涯编排）
-        run: node _uitest.js 2
+        run: npm run test:ui
 
       - name: KO 模块专项（季后赛 / 深渊晋级图）
-        run: node _kotest.js
+        run: npm run test:ko
 
       - name: 冠亚决赛弹窗定向冲烟（7 定位 · jsdom）
-        run: node _gftest.js
+        run: npm run test:gf

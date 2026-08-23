@@ -136,7 +136,75 @@ const CONFIG = {
   TEAM_YEAR_GAIN_MIN: 1,       // demov5.0feedback：队友每年保底成长值
   TEAM_YEAR_GAIN_MAX: 4,       // demov5.0feedback：队友单年成长上限（保底 1 + 战术额外 ≤3）
   TEAM_NPC_CAP: 80,            // demov5.0feedback：队友强度总封顶（74→80）
+
+  // 深渊黑马身份：仅在 p.golden / p.abyssDarkHorse=true 的生涯生效，其余身份继续走原配置。
+  GOLDEN: {
+    STAT_TOTAL: 220,
+    MONEY: 1500,
+    POP_RANGE: [2, 4],
+    STAB_CAP: 50,
+    STAB_CAP_ROLE_POOL: 60,
+    STAB_CAP_RANK_DISCIPLINE: 70,
+    TEAM_BASE_RANGE: [25, 75],
+    TEAM_MATCH_SWING: 8,
+    WIN_POP_MULT: 1.25,
+    LOSE_POP_PENALTY: 0.8,
+    LOSE_STAB_PENALTY: 1,
+    SEASON_DRIFT_MIN: -8,
+    SEASON_DRIFT_MAX: 4,
+    CP_WEIGHTS: { tech: 0.30, tac: 0.25, phys: 0.15, stab: 0.30 },
+    FIRST_ABYSS_TEAM_RANGES: [
+      { maxPlace: 8, range: [66, 70], label: "八强" },
+      { maxPlace: 12, range: [61, 65], label: "12强" },
+      { maxPlace: 16, range: [56, 60], label: "小组赛" },
+      { maxPlace: 99, range: [50, 55], label: "止步预选赛" },
+    ],
+  },
 };
+
+function isGoldenPlayer(p) { return !!(p && (p.abyssDarkHorse || p.golden || p.identity === "深渊黑马")); }
+
+let GOLDEN_STAT_CANDIDATES = null;
+function goldenStatCandidates() {
+  if (GOLDEN_STAT_CANDIDATES) { return GOLDEN_STAT_CANDIDATES; }
+  const total = CONFIG.GOLDEN.STAT_TOTAL;
+  const cap = CONFIG.GOLDEN.STAB_CAP;
+  const out = [];
+  for (let a = 1; a <= 100; a++) {
+    for (let b = 1; b <= 100; b++) {
+      for (let c = 1; c <= 100; c++) {
+        const d = total - a - b - c;
+        if (d >= 1 && d <= cap) { out.push([a, b, c, d]); }
+      }
+    }
+  }
+  GOLDEN_STAT_CANDIDATES = out;
+  return out;
+}
+function allocateGoldenStats() {
+  const vals = choiceOf(goldenStatCandidates()).slice();
+  const stabChoices = vals.map((v, i) => (v <= CONFIG.GOLDEN.STAB_CAP ? i : -1)).filter((i) => i >= 0);
+  const stabIdx = choiceOf(stabChoices);
+  const stab = vals.splice(stabIdx, 1)[0];
+  shuffle(vals);
+  return { tech: vals[0], tac: vals[1], phys: vals[2], stab };
+}
+
+function goldenTeamRangeByPlace(place) {
+  const rec = CONFIG.GOLDEN.FIRST_ABYSS_TEAM_RANGES.find((r) => place <= r.maxPlace);
+  return rec || CONFIG.GOLDEN.FIRST_ABYSS_TEAM_RANGES[CONFIG.GOLDEN.FIRST_ABYSS_TEAM_RANGES.length - 1];
+}
+
+function applyGoldenSeasonDrift(p) {
+  if (!isGoldenPlayer(p)) return null;
+  const d = {};
+  for (const k of ["tech", "tac", "phys", "stab"]) {
+    d[k] = randint(CONFIG.GOLDEN.SEASON_DRIFT_MIN, CONFIG.GOLDEN.SEASON_DRIFT_MAX);
+    p[k] += d[k];
+  }
+  p._clamp();
+  return d;
+}
 
 function selectThreshold(year) { return 32 + (year - 1) * 2.5; }
 // 战术 → 队友强度单年提升（demov5.0feedback）：每年保底 +1，战术带来的配合成长作为
@@ -203,14 +271,46 @@ function pickTeams(pool, n, used) {
   out.forEach((x) => used.add(x));
   return out;
 }
-function generateTeams(playerTeam) {
-  const used = new Set(["InStar"]);
+function cleanTeamName(name) {
+  return String(name == null ? "" : name).trim().slice(0, 12);
+}
+function normalizeDomesticNames(names, count, playerTeam) {
+  const out = [];
+  const seen = new Set();
+  const blocked = cleanTeamName(playerTeam).toLowerCase();
+  const add = (name) => {
+    const nm = cleanTeamName(name);
+    const key = nm.toLowerCase();
+    if (!nm || key === blocked || seen.has(key)) { return false; }
+    seen.add(key);
+    out.push(nm);
+    return true;
+  };
+  (names || []).forEach(add);
+  ["InStar", ...TEAM_POOLS.cn].forEach((nm) => {
+    if (out.length < count) { add(nm); }
+  });
+  let i = 1;
+  while (out.length < count) {
+    add("Team" + i);
+    i += 1;
+  }
+  return out.slice(0, count);
+}
+function generateTeams(playerTeam, opts = {}) {
+  const domesticCount = Math.max(1, Math.floor((opts && opts.domesticCount) || 9));
+  const customDomestic = Array.isArray(opts && opts.domesticNames) ? opts.domesticNames : null;
+  const domestic = customDomestic
+    ? normalizeDomesticNames(customDomestic, domesticCount, playerTeam)
+    : normalizeDomesticNames(["InStar", ...pickTeams(TEAM_POOLS.cn, domesticCount - 1, new Set(["InStar", playerTeam].filter(Boolean)))], domesticCount, playerTeam);
+  const fixed = domestic[0] || "InStar";
+  const cn = domestic.slice(1);
+  const used = new Set(domestic);
   if (playerTeam) used.add(playerTeam);
-  const cn = pickTeams(TEAM_POOLS.cn, 8, used);
   return {
-    fixed: "InStar",
+    fixed,
     cn,
-    domestic: ["InStar", ...cn],            // 夏/秋季赛对手池（9 支）
+    domestic,                               // 夏/秋季赛对手池：普通 9 支；深渊黑马签约前为 10 支，签约后移除所加入战队
     amateur: pickTeams(TEAM_POOLS.amateur, 8, used),
     jp: pickTeams(TEAM_POOLS.jp, 8, used),
     na: pickTeams(TEAM_POOLS.na, 2, used),
@@ -281,7 +381,7 @@ const SHOP_RARE = [
  *  · 临场爆发(3) + 属性成长(5) + 舆论处理(1) = 9 件常规池，每次随机抽 5、种类不重复（无放回）；
  *  · 8% 概率命中稀缺，命中后从 3 件稀缺中随机抽 1 上架。
  * 返回带 left 库存字段的本年货架。 */
-function buildShopStock() {
+function buildShopStock(p) {
   const inGroup = (g) => SHOP_ITEMS.filter(it => it.group === g);
   const basics = [...inGroup("体力恢复"), ...inGroup("伤病防护")];
   const pool9 = [...inGroup("临场爆发"), ...inGroup("属性成长"), ...inGroup("舆论处理")];
@@ -291,7 +391,7 @@ function buildShopStock() {
   }
   const picked5 = pool9.slice(0, 5);
   const stock = [...basics, ...picked5];
-  if (Math.random() < SHOP_RARE_P) stock.push(choiceOf(SHOP_RARE));
+  if (!isGoldenPlayer(p) && Math.random() < SHOP_RARE_P) stock.push(choiceOf(SHOP_RARE));
   return stock.map(it => ({ ...it, left: it.qty }));
 }
 
@@ -300,6 +400,9 @@ class Player {
   // 策划案 v6.3 §四：完整选手 ID = 队伍名称_玩家ID（如 Nova_Rookie，均为示例虚构名）。
   constructor(identity, teamName, playerId, role) {
     this.identity = identity;
+    this.abyssDarkHorse = identity === "深渊黑马";
+    this.golden = this.abyssDarkHorse; // 兼容旧存档与旧 UI 逻辑。
+    this.golden_stab_cap = this.abyssDarkHorse ? CONFIG.GOLDEN.STAB_CAP : 100;
     this.teamName = (teamName || "Nova").trim() || "Nova";
     this.playerId = (playerId || "无名选手").trim() || "无名选手";
     this.name = `${this.teamName}_${this.playerId}`;   // 面板/赛场显示用完整 ID
@@ -314,23 +417,24 @@ class Player {
     //   · 青训 / 榜前人皇·屠皇 总量 130；人气主播 总量 110。
     //   · 人皇 / 屠皇：把 roll 出的最高值赋给技术，并在此基础上 技术 +5（一次性呈现）。
     //   · 初始人气：青训 / 人皇·屠皇 = U[0.8,2]；主播 = U[3,5]。
-    const total = (identity === "主播") ? 110 : 130;
-    let dims = allocateFourStats(total);
-    if (identity === "人皇") {
+    const total = this.golden ? CONFIG.GOLDEN.STAT_TOTAL : ((identity === "主播") ? 110 : 130);
+    let dims = this.golden ? allocateGoldenStats() : allocateFourStats(total);
+    if (!this.golden && identity === "人皇") {
       const vals = [dims.tech, dims.tac, dims.phys, dims.stab].sort((a, b) => b - a);
       const rest = shuffle(vals.slice(1));
       dims = { tech: vals[0] + 5, tac: rest[0], phys: rest[1], stab: rest[2] };
     }
     this.tech = dims.tech; this.tac = dims.tac; this.phys = dims.phys; this.stab = dims.stab;
-    if (identity === "主播") { this.money = 3000; this.pop = rnd(3, 5); }
+    if (this.golden) { this.money = CONFIG.GOLDEN.MONEY; this.pop = rnd(...CONFIG.GOLDEN.POP_RANGE); }
+    else if (identity === "主播") { this.money = 3000; this.pop = rnd(3, 5); }
     else { this.pop = rnd(0.8, 2); }
     this._clamp();
 
     // 选拔 / 主力
-    this.is_starter = false;
+    this.is_starter = this.golden;
     this.consec_fail = 0;
     this.first_year_failed = false;
-    this.ever_starter = false;
+    this.ever_starter = this.golden;
     this.ever_fail = false;
 
     // 道具 / debuff
@@ -364,7 +468,8 @@ class Player {
 
     // 转会 / 战队
     this.transfer_count = 0;
-    this.npc_base = rnd(CONFIG.TEAM_BASE_RANGE[0], CONFIG.TEAM_BASE_RANGE[1]);  // 开局队友强度基准（随机，固定）
+    const teamBaseRange = this.golden ? CONFIG.GOLDEN.TEAM_BASE_RANGE : CONFIG.TEAM_BASE_RANGE;
+    this.npc_base = rnd(teamBaseRange[0], teamBaseRange[1]);  // 开局队友强度基准（随机，固定）
     this.npc_growth = 0;            // 战术驱动的逐年累积提升（见 advanceTeammate）
     this.npc_offset = 0;            // 转会进出 / 玩家转会带来的偏移
     this.teammate_settle_years = 0; // demov4.3feedback：转会后磨合期——尚需跳过的「配合增长」年数（第一年为 0）
@@ -422,6 +527,24 @@ class Player {
     this.bp_signature_count = 0;     // BP 冲突中选择绝活角色的次数
     this.bp_signature_pending = false; // 本场 BP 选了绝活、待结算胜负加成
 
+    // 深渊黑马专属追踪：自有字段可随 toJSON/fromSave 自动持久化。
+    this.golden_events = new Set();
+    this.golden_opening_done = false;
+    this.golden_no_champ_years = 0;
+    this.golden_first_abyss_place = null;
+    this.golden_first_abyss_label = "";
+    this.golden_shout = "";
+    this.golden_first_pro_year_playoff = false;
+    this.golden_amateur_team = null;
+    this.golden_pro_debut_choice = null;
+    this.golden_pro_debut_resolved = false;
+    this.golden_champion_skins = [];
+    this.golden_old_friend = null;
+    this.golden_old_friend_joined = false;
+    this.golden_old_friend_team = "";
+    this.golden_old_friend_invalid = false;
+    this.golden_old_friend_champ = false;
+
     // 年度 / 年内
     this.cur_year = 0;
     this.year_f = [];
@@ -444,7 +567,8 @@ class Player {
 
   _clamp() {
     for (const k of ["appearance", "phys", "tech", "tac", "stab", "luck"]) {
-      this[k] = clamp(this[k], 0, 100);
+      const hi = (k === "stab" && isGoldenPlayer(this)) ? (this.golden_stab_cap || CONFIG.GOLDEN.STAB_CAP) : 100;
+      this[k] = clamp(this[k], 0, hi);
     }
     // demov4.1feedback：粉丝数（人气）/ 体力均不可为负，统一在 clamp 处兜底。
     if (this.pop < 0) { this.pop = 0; }
@@ -458,10 +582,17 @@ class Player {
   get pop_mult() { return 0.5 + this.appearance / 100; }
   get stamina_max() { return 100 + (this.phys - 50) * 0.6; }
   get cp() {
+    if (isGoldenPlayer(this)) {
+      const w = CONFIG.GOLDEN.CP_WEIGHTS;
+      return this.tech * w.tech + this.tac * w.tac + this.phys * w.phys + this.stab * w.stab;
+    }
     return this.tech * CONFIG.W_TECH + this.tac * CONFIG.W_TAC +
            this.phys * CONFIG.W_PHYS + this.stab * CONFIG.W_STAB;
   }
-  teamNpc(_year) { return clamp(this.npc_base + this.npc_growth + this.npc_offset, 40, CONFIG.TEAM_NPC_CAP); }
+  teamNpc(_year) {
+    const lo = isGoldenPlayer(this) ? 30 : 40;
+    return clamp(this.npc_base + this.npc_growth + this.npc_offset, lo, CONFIG.TEAM_NPC_CAP);
+  }
   // 每个新赛年（第 2 赛年起）调用一次：战术越高，队伍配合提升越多（单年封顶）。返回本年提升量。
   advanceTeammate() { const g = teammateYearGain(this.tac); this.npc_growth += g; return g; }
   addPop(base) { this.pop = Math.max(0, this.pop + base * this.pop_mult); }   // 粉丝数下限 0（demov4.1feedback）
@@ -491,6 +622,9 @@ class Player {
       const v = data[k];
       p[k] = (v && typeof v === "object" && Array.isArray(v.__set)) ? new Set(v.__set) : v;
     }
+    p.abyssDarkHorse = !!(p.abyssDarkHorse || p.golden || p.identity === "深渊黑马");
+    p.golden = p.abyssDarkHorse;
+    p.golden_stab_cap = p.abyssDarkHorse ? (p.golden_stab_cap || CONFIG.GOLDEN.STAB_CAP) : 100;
     return p;
   }
 }
@@ -694,16 +828,23 @@ function computeF(p, stage, oppPopBase, year, oppBonus, fdelta, buff, forcedRflo
 function settleGame(p, stage, oppPopBase, winPop, year, F, fainted, oppBonus) {
   // demov4.2feedback《版本变更》：得分占比 score_share 决定「你」在团队分中的权重（默认 0.8）。
   const share = (typeof p.score_share === "number") ? clamp(p.score_share, 0, 1) : 0.8;
-  const team = share * F + (1 - share) * p.teamNpc(year);
+  const mateSwing = isGoldenPlayer(p) ? rnd(-CONFIG.GOLDEN.TEAM_MATCH_SWING, CONFIG.GOLDEN.TEAM_MATCH_SWING) : 0;
+  const mate = clamp(p.teamNpc(year) + mateSwing, 40, CONFIG.TEAM_NPC_CAP);
+  const team = share * F + (1 - share) * mate;
   const opp = sampleOpp(stage, year) + (oppBonus || 0) + p.opp_delta_extra;
   const win = (!fainted) && (team > opp);
   p.year_f.push(F);
   if (win) {
-    p.addPop(winPop); p.money += 100;
+    p.addPop(winPop * (isGoldenPlayer(p) ? CONFIG.GOLDEN.WIN_POP_MULT : 1)); p.money += 100;
     if (p.temp_active || p.teno_active) p.injured_win += 1;
+  } else if (isGoldenPlayer(p)) {
+    p.pop = Math.max(0, p.pop - CONFIG.GOLDEN.LOSE_POP_PENALTY * p.pop_mult);
+    p.stab = Math.max(0, p.stab - CONFIG.GOLDEN.LOSE_STAB_PENALTY);
+    p.ever_negative = true;
   } else if (Math.random() < 0.30) {
     p.pop = Math.max(0, p.pop - 0.1);
   }
+  p._clamp();
   return { team, opp, win };
 }
 
@@ -746,6 +887,9 @@ function settleChamp(p, kind, year, fmvp, moneyOverride) {
   p.champ_per_year[year] = (p.champ_per_year[year] || 0) + 1;
   if (p.first_champ_year === null) p.first_champ_year = year;
   if (p.teno_active) p.won_with_teno = true;
+  if (isGoldenPlayer(p) && p.golden_old_friend_joined && !p.golden_old_friend_invalid && p.golden_old_friend_team === p.teamName) {
+    p.golden_old_friend_champ = true;
+  }
   if (fmvp) {
     p.fmvp_total += 1; p.fmvp_per_year[year] = (p.fmvp_per_year[year] || 0) + 1;
     if (kind !== "IVS") { p.fmvp_non_ivs += 1; }   // demov5.01feedback：IVS FMVP 不计入「老大」判定
@@ -798,6 +942,7 @@ function transferRollForced(p) {  // 是否触发"可能转会"
 }
 function doTransfer(p) {
   p.transfer_count += 1;
+  if (isGoldenPlayer(p) && p.golden_old_friend_joined && !p.golden_old_friend_champ) { p.golden_old_friend_invalid = true; }
   const bias = (p.luck > 60 || p.pop > 100) ? 1.0 : -1.0;
   p.npc_offset += rnd(-5, 8) * (bias > 0 ? 1.0 : 0.6);
 }
@@ -881,6 +1026,7 @@ function computeAchievements(p, fullCareer, grandSlam, forced) {
     else if (br) a["战队大脑"] = true;
   }
   a["光荣的荆棘路"] = (p.first_year_failed && p.ever_starter && total >= 1);
+  a["英雄出少年"] = p.first_champ_year === 1 || (p.champ_per_year && (p.champ_per_year[1] || 0) >= 1);
   a["年度最佳演绎"] = (p.best_perf_count >= 1);
   a["看台上的星海"] = (p.pop >= 250 && p.popular_count >= 3 && fullCareer);
   a["一人一城"] = (fullCareer && p.transfer_count === 0 && total >= 1);
@@ -923,6 +1069,11 @@ function computeAchievements(p, fullCareer, grandSlam, forced) {
   a["登峰造极"] = abyssFmvp && pos === "zj";
   a["算无遗策"] = abyssFmvp && pos === "kc";
   a["一夫当关"] = abyssFmvp && pos === "sy";
+  // 深渊黑马专属成就（仅 p.golden=true 的生涯可达成）。
+  a["崭露头角"] = isGoldenPlayer(p) && !!p.golden_first_pro_year_playoff;
+  a["顶峰相见"] = isGoldenPlayer(p) && total >= 1;
+  a["王朝新立"] = isGoldenPlayer(p) && p.champ["深渊"] >= 1;
+  a["这就是我们的羁绊！"] = isGoldenPlayer(p) && !!p.golden_old_friend_champ && !p.golden_old_friend_invalid;
   a["人生百味"] = false;   // 白金成就：解锁所有结局和成就，由结局层结合图鉴判定后回填
   return a;
 }
@@ -985,6 +1136,7 @@ const ACH_DESC = {
   "战队大脑": "求生者·战术 ≥90（与六边形战士互斥）",
   "六边形战士": "技/战/体/稳 均 ≥80",
   "光荣的荆棘路": "首年选拔曾失败，后转正并夺冠",
+  "英雄出少年": "第一赛年夺得任意冠军",
   "年度最佳演绎": "当选年度最佳演绎 ≥1",
   "看台上的星海": "满役·人气≥250·3 度年度人气选手",
   "一人一城": "满役·从未转会·至少 1 冠",
@@ -1017,6 +1169,10 @@ const ACH_DESC = {
   "登峰造极": "追击型 · 深渊夺冠 · 当选 FMVP",
   "算无遗策": "控场型 · 深渊夺冠 · 当选 FMVP",
   "一夫当关": "守椅型 · 深渊夺冠 · 当选 FMVP",
+  "崭露头角": "深渊黑马身份下，首个职业赛年进入季后赛",
+  "顶峰相见": "深渊黑马身份下，获得任意职业赛事冠军",
+  "王朝新立": "深渊黑马身份下，获得深渊冠军",
+  "这就是我们的羁绊！": "选择让老队友加入战队，并与之在同一个战队中一同夺冠",
   "人生百味": "解锁所有结局和成就",
 };
 
@@ -1031,12 +1187,13 @@ const ACH_TIER = {
   // demov5.0feedback 新增黄金成就（世界第一系列）
   "世界第一救人位": "黄金", "世界第一辅助位": "黄金", "世界第一操作手": "黄金", "世界第一牵制位": "黄金",
   "登峰造极": "黄金", "算无遗策": "黄金", "一夫当关": "黄金",
+  "顶峰相见": "黄金", "王朝新立": "黄金", "这就是我们的羁绊！": "黄金",
   "洲际之巅": "白银", "六边形战士": "白银", "一人一城": "白银", "浴血荣光": "白银", "大器晚成": "白银",
   "光荣的荆棘路": "白银", "百炼成钢": "白银", "昙花": "白银", "天妒英才": "白银", "遗珠": "白银", "绝活信仰玩家": "白银",
-  "万能螺丝": "白银",
+  "万能螺丝": "白银", "英雄出少年": "白银",
   "冠军选手": "青铜", "FMVP": "青铜", "年度最佳演绎": "青铜", "轻伤不下火线": "青铜", "浪迹天涯": "青铜",
   "流量为王": "青铜", "操作手": "青铜", "战队大脑": "青铜", "返老还童": "青铜", "庄园快信": "青铜", "逆转未来": "青铜",
-  "猫猫人": "青铜", "及时送达": "青铜",
+  "猫猫人": "青铜", "及时送达": "青铜", "崭露头角": "青铜",
 };
 // demov4.2feedback：万能螺丝改为非隐藏（白银）；新增隐藏成就「老大」。
 const ACH_HIDDEN = new Set(["绝活信仰玩家", "返老还童", "庄园快信", "逆转未来", "老大"]);
@@ -1589,6 +1746,7 @@ function sampleTeamWins(meta, name) {
 /* --------------------------- 暴露到全局 -------------------------------- */
 window.IVL = {
   CONFIG, SHOP_ITEMS, SHOP_RARE, SHOP_RARE_P, buildShopStock, Player, rnd, randint, triangular, gauss, clamp, choiceOf, shuffle,
+  isGoldenPlayer, goldenTeamRangeByPlace, applyGoldenSeasonDrift,
   OPP_POP: CONFIG.OPP_POP, WIN_POP: CONFIG.WIN_POP, CHAMP_REWARD: CONFIG.CHAMP_REWARD,
   selectThreshold, growthTech, growthTac, growthPhys, oppDelta, sampleOpp, popThr3,
   generateTeams, TEAM_POOLS, allocateFourStats, streamMoneyGain,
