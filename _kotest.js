@@ -53,6 +53,40 @@ const epilogue = `
       const res = koRunHeadless(spec, winProb);
       return { place: res.place, fLen: res.fList.length, finalWinner: spec.nodes[spec.finalKey].winner, max: which === "abyss" ? 12 : 6 };
     };
+    window.__KO.runRedoOverlay = async function () {
+      freshWorld();
+      window.__KO_FAST = true;
+      P.tech = 1; P.tac = 1; P.phys = 1; P.stab = 1; P.pop = 0; P.stamina = 100; P.stamina_max = 100;
+      P.redo_token = 1; P.used_redo = false; P.nextGameBuff = 0; P.nextNoBadRoll = false;
+      const spec = buildSeasonSpec("夏", 5);
+      const firstPlayerKey = spec.order.find((key) => spec.nodes[key].slots.includes(spec.playerKey));
+      const waitTick = () => new Promise((r) => setTimeout(r, 0));
+      runKnockoutScreen(spec);
+      let redoShown = false;
+      for (let i = 0; i < 120; i++) {
+        const redo = document.getElementById("ko-redo");
+        if (redo && redo.classList.contains("show")) { redoShown = true; break; }
+        const skip = document.getElementById("ko-skipBtn");
+        const act = document.getElementById("ko-actBtn");
+        if (skip && skip.style.display !== "none" && !skip.disabled) skip.click();
+        else if (act && act.style.display !== "none" && !act.disabled) act.click();
+        await waitTick(); await waitTick();
+      }
+      const unresolvedAtPrompt = firstPlayerKey && spec.nodes[firstPlayerKey].winner === null;
+      const fListAtPrompt = spec._fList.length;
+      const yes = document.getElementById("ko-redoYes");
+      if (yes) yes.click();
+      await Promise.resolve();
+      const tokenAfter = P.redo_token;
+      const usedRedo = P.used_redo;
+      const fListAfterRestore = spec._fList.length;
+      const unresolvedAfterClick = firstPlayerKey && spec.nodes[firstPlayerKey].winner === null;
+      for (let i = 0; i < 80 && firstPlayerKey && spec.nodes[firstPlayerKey].winner === null; i++) await waitTick();
+      const resolvedAfterRetry = firstPlayerKey && spec.nodes[firstPlayerKey].winner !== null;
+      const overlay = document.getElementById("koscreen"); if (overlay) overlay.remove();
+      window.__KO_FAST = false;
+      return { redoShown, unresolvedAtPrompt, fListAtPrompt, tokenAfter, usedRedo, fListAfterRestore, unresolvedAfterClick, resolvedAfterRetry };
+    };
   })();
 `;
 
@@ -83,5 +117,18 @@ for (const [which, rank, prob, label] of [["season", 1, 0.9, "季后赛常胜"],
   ok(r.fLen >= 1, `${label}：至少打了 1 场 (F×${r.fLen})`);
 }
 
-console.log(failed === 0 ? "\nKO 专项冲烟全部通过。" : `\nKO 专项冲烟失败 ${failed} 项。`);
-process.exit(failed === 0 ? 0 : 1);
+(async () => {
+  console.log("[KO 后悔药重打]");
+  const rr = await dom.window.__KO.runRedoOverlay();
+  ok(rr.redoShown, "玩家 KO 场失败后弹出后悔药重打确认");
+  ok(rr.unresolvedAtPrompt && rr.fListAtPrompt === 1, "后悔药确认出现时晋级图尚未写入胜负，首轮 F 已暂记");
+  ok(rr.tokenAfter === 0 && rr.usedRedo, "点击重打后消耗 1 次额度并记录使用过后悔药");
+  ok(rr.fListAfterRestore === 0 && rr.unresolvedAfterClick, "点击重打后回滚本场 F 与节点状态，仍停留同一场");
+  ok(rr.resolvedAfterRetry, "重打后同一场会重新结算并写入晋级图");
+
+  console.log(failed === 0 ? "\nKO 专项冲烟全部通过。" : `\nKO 专项冲烟失败 ${failed} 项。`);
+  process.exit(failed === 0 ? 0 : 1);
+})().catch((err) => {
+  console.error(err && err.stack ? err.stack : err);
+  process.exit(1);
+});

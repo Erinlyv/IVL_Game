@@ -656,7 +656,12 @@ async function goldenSignAfterAbyss(result) {
     }
     if (Array.isArray(gameTeams.amateur) && oldTeam && !gameTeams.amateur.includes(oldTeam)) { gameTeams.amateur.push(oldTeam); }
   }
-  P.golden_amateur_team = oldTeam;
+  P.golden_amateur_team = {
+    name: oldTeam,
+    players: Array.isArray(P.golden_amateur_mates)
+      ? P.golden_amateur_mates.map((m) => ({ name: m.name, level: m.level }))
+      : [],
+  };
   P.renameTeam(newTeam);
   P.npc_growth = 0; P.npc_offset = 0; P.teammate_settle_years = 0;
   P.is_starter = true; P.ever_starter = true; P.golden_opening_done = true;
@@ -799,7 +804,7 @@ async function goldenOldFriendEvent() {
     fallback: friendDefault,
     maxlen: 12,
   });
-  const level = E.randint(45, 70);
+  const level = E.goldenOldFriendLevel(P);
   P.golden_old_friend = { id: friend, level };
   const idx = await choose("深渊黑马 · 民间队旧友", `
     <p class="flavor">训练结束后，你收到一条消息。头像是你第一次深渊比赛时的队标。你的好友叫做：<b>${htmlEscape(friend)}</b>，水平数值为 <b>${level}</b>。</p>
@@ -816,6 +821,8 @@ async function goldenOldFriendEvent() {
       P.golden_old_friend_joined = true;
       P.golden_old_friend_team = P.teamName;
       P.golden_old_friend_invalid = false;
+      P.golden_old_friend_bond_ready = false;
+      P.golden_old_friend_champ = false;
       renderHUD();
       await say("民间队旧友 · 试训成功", `<p>或许是感受到了他对职业的渴望，你询问教练是否可以让他来试训，得到了肯定的答复后，你把俱乐部试训信息发了过去。也许不是每个人都能走到这里，但你想给他一个机会。</p><p class="ok">${htmlEscape(friend)} 试训成功，加入战队。</p>`, "继续");
     } else {
@@ -828,6 +835,25 @@ async function goldenOldFriendEvent() {
   } else {
     await say("民间队旧友 · 未读消息", `<p>你把手机扣在桌上。不是不想回，只是你还没想好该怎么面对。</p>`, "继续");
   }
+}
+
+async function goldenOldFriendBondEvent() {
+  if (!E.isGoldenPlayer(P) || !P.golden_old_friend_bond_ready || P.golden_old_friend_champ || P.golden_old_friend_invalid || goldenSeen("民间队旧友羁绊")) return;
+  const friend = (P.golden_old_friend && P.golden_old_friend.id) || "民间队旧友";
+  await choose("深渊黑马 · 民间队旧友羁绊", `
+    <p class="flavor">最后一把打完，你还没来得及放下手机，<b>${htmlEscape(friend)}</b>已经冲上台紧紧抱住你。</p>
+    <p class="flavor">“我们一定会一起淋金雨！”这句民间队时期的鼓励，居然真的已经兑现。</p>
+    <p class="flavor">漫天彩带飘落，落在那对许诺并肩作战的少年心中，落在你们的发顶。</p>`,
+    [{ label: "这就是我们之间的羁绊！", cls: "primary" }]);
+  const before = snapshotAttrs();
+  goldenMark("民间队旧友羁绊");
+  P.golden_old_friend_champ = true;
+  P.golden_old_friend_bond_ready = false;
+  goldenRawPop(10);
+  P._clamp(); renderHUD();
+  await say("民间队旧友羁绊 · 结果", `
+    <p class="flavor">你们的互动被粉丝们剪成了许多视频，“民间队双子星并肩夺冠”在社交媒体上热度居高不下。</p>
+    <p class="ok">${trainingDeltaText(before)}</p>`, "继续");
 }
 
 async function goldenQuestionedEvent() {
@@ -1994,6 +2020,7 @@ async function settleChampion(kind, fList) {
     break;
   }
   closeFmvpModal();
+  await goldenOldFriendBondEvent();
 }
 async function settlePlacement(kind, place, fList) {
   if (place === 1) { await settleChampion(kind, fList); return; }
@@ -2045,6 +2072,7 @@ async function playDomestic(kind) {
   // v4.1：整屏「晋级图」UI 复刻 demo10-季后赛ui；玩家场走真实引擎结算，弹窗内含战报 + 颁奖。
   const { place, playerWins } = await runKnockoutScreen(spec);
   P._last_domestic_playoff_wins = playerWins || 0;
+  if (place === 1) { await goldenOldFriendBondEvent(); }
   E.endCompetition(P);
   return place;
 }
@@ -2139,7 +2167,10 @@ async function playAbyss(seeded) {
   const koSpec = buildAbyssSpec(groupRank);
   // v4.1：整屏「晋级图」UI 复刻 demo10-深渊ui；玩家场走真实引擎结算，弹窗内含战报 + 颁奖。
   const out = await runKnockoutScreen(koSpec);
-  if (out.place === 1) { await goldenAbyssChampionEvent(); }
+  if (out.place === 1) {
+    await goldenAbyssChampionEvent();
+    await goldenOldFriendBondEvent();
+  }
   E.endCompetition(P);
   return { place: out.place, stage: "ko", label: koSpec.placeLabel(out.place), fList: out.fList };
 }
@@ -2798,7 +2829,7 @@ function warCardHtml(rec, isForced) {
           <div class="sc-sechead between"><div class="left"><span class="bar"></span><h3>已达成就</h3></div><div class="prog">本档解锁 <b>${rec.achs.length}</b> / ${allA}</div></div>
           <div class="chips">${chips}</div>
         </div>
-        <div class="sc-foot"><span class="tip">📸 截图保存这张战报卡，晒到同人圈吧！</span><span class="sc-date">${rec.date} · #IVL模拟器 v6.0</span></div>
+        <div class="sc-foot"><span class="tip">📸 截图保存这张战报卡，晒到同人圈吧！</span><span class="sc-date">${rec.date} · #IVL模拟器 v6.1</span></div>
       </div>
     </div>`;
 }
@@ -2819,7 +2850,7 @@ function warCardText(rec) {
     lines.push(`深渊冠军皮：${rec.golden_champion_skins.map((s) => `${s.main}/${s.partner}`).join("、")}`);
   }
   lines.push(`解锁成就（${rec.achs.length}）：${rec.achs.join("、") || "无"}`);
-  lines.push(`#IVL模拟器 v6.0`);
+  lines.push(`#IVL模拟器 v6.1`);
   return lines.filter(Boolean).join("\n");
 }
 
@@ -3014,7 +3045,7 @@ function renderShareCanvas(rec, qrImg) {
   ctx.font = `600 14px ${FB}`; ctx.fillStyle = "#cfd6e6";
   ctx.fillText("扫码体验 · IVL 模拟器", P, y + 6);
   ctx.font = `400 12px ${FB}`; ctx.fillStyle = "#7c89a3";
-  ctx.fillText(`${rec.date} · #IVL模拟器 v6.0`, P, y + 30);
+  ctx.fillText(`${rec.date} · #IVL模拟器 v6.1`, P, y + 30);
   ctx.font = `400 11px ${FB}`; ctx.fillStyle = "#5d6884";
   ctx.fillText("长按图片保存到相册分享", P, y + 52);
   y += qrS + 24;
@@ -3379,8 +3410,9 @@ window.addEventListener("DOMContentLoaded", () => {
  *   · 全部结束后按真实名次结算（settleChamp/settleRunnerup/settleThird/settlePlace + FMVP），
  *     颁奖弹窗展示**真实的奖金 / 涨粉增量与 FMVP 归属**。
  * 作用域：整屏 overlay #koscreen（CSS 全部前缀作用域，见 styles.css）；元素 id 统一前缀 ko-。
- * 注：临场掷骰阶段不再走引擎内置 present()/manualDiceRoll/赛中事件/后悔药/名场面弹窗——这些
- *     交互页面会与整屏 overlay 冲突；此处仅取引擎的**核心结算数学**，保证赛果真实可追溯。
+ * 注：临场掷骰阶段不再走引擎内置 present()/manualDiceRoll/赛中事件/名场面弹窗——这些
+ *     交互页面会与整屏 overlay 冲突；后悔药与名场面由 KO overlay 内部弹窗承接。
+ *     此处仅取引擎的**核心结算数学**，保证赛果真实可追溯。
  * ===========================================================================*/
 const KO_PALETTE = ['#e2b53e', '#2dd4bf', '#84cc16', '#fb923c', '#a78bfa', '#ef4444',
   '#22c55e', '#eab308', '#38bdf8', '#f59e0b', '#facc15', '#e11d48', '#c084fc', '#60a5fa'];
@@ -3607,7 +3639,7 @@ function koRecords(spec) {
 }
 
 /* 真实引擎驱动一场玩家对局（无 UI）：忠实复刻 playMatch 的体力 / buff / 同步疲劳口径，
- * 但跳过赛中事件 / 后悔药 / 名场面等交互页面（与整屏 overlay 冲突）。winOverride 仅供冲烟强制赛果。 */
+ * 但跳过赛中事件 / 名场面等交互页面（与整屏 overlay 冲突）；后悔药由 KO UI 在外层承接。winOverride 仅供冲烟强制赛果。 */
 function koDecidePlayer(spec, key, r, winOverride) {
   const node = spec.nodes[key];
   const stage = spec.stageOf(key);
@@ -3627,7 +3659,7 @@ function koDecidePlayer(spec, key, r, winOverride) {
   const tags = E.reasonTags(P, { stage, win, keyMatch: oppBonus > 0, F: cf.F, opp: sg.opp, team: sg.team, cheer: cf.cheer, fainted, year: curYear, age: curAge });
   const reason = E.pickReason(tags, win);
   if (typeof renderHUD === 'function') renderHUD();
-  return { win, F: cf.F, fainted, reason };
+  return { win, F: cf.F, team: sg.team, opp: sg.opp, fainted, reason };
 }
 
 /* 冲烟用：无 UI / 无动画跑完整张图，玩家场走真实引擎结算，返回 {place, fList}。 */
@@ -3812,6 +3844,15 @@ function koOverlayHTML(spec) {
     <div class="bagx-head"><div><div class="ttl">背包 · 加成道具</div><div class="sub" id="ko-bagTip">道具仅在你的下一场开打前可用</div></div><button class="bagx-x" id="ko-bagX" aria-label="关闭">×</button></div>
     <div class="bagx-list" id="ko-bagList"></div>
   </div></div>
+  <div class="modal" id="ko-redo"><div class="sheet">
+    <div class="sh"><span class="crest" style="--tc:${KO_HUNTER}">${koMono(P.teamName)}</span>
+      <div><div class="id">后悔药 · 要重来一次吗？</div><div class="role">REDO TOKEN · 当前对局</div></div></div>
+    <div id="ko-redoBody" style="padding:0 22px 14px"></div>
+    <div style="padding:0 22px 22px;display:grid;gap:10px">
+      <button class="bigbtn player" id="ko-redoYes" type="button">吞下后悔药，重打这一场</button>
+      <button class="bigbtn next" id="ko-redoNo" type="button">算了，接受结果</button>
+    </div>
+  </div></div>
   <div class="modal" id="ko-report"><div class="sheet report">
     <div class="rep-head"><div><div class="ey">${h.reportEy}</div><div class="ttl">${h.reportTitle}</div></div>
       <button class="x" id="ko-reportX" aria-label="关闭">×</button></div>
@@ -3860,11 +3901,52 @@ function runKnockoutScreen(spec) {
     const nodeEl = (key) => document.getElementById('ko-node-' + key);
     const isPlayerMatch = (key) => spec.nodes[key].slots.includes(spec.playerKey);
 
-    let idx = 0, phase = 'ready', lastRoll = null, autoTimer = null, clashTimer = null, finished = false, settled = false;
+    let idx = 0, phase = 'ready', lastRoll = null, autoTimer = null, clashTimer = null, finished = false, settled = false, grandFinalSnap = null;
     // 统一清理所有挂起定时器：autoTimer(排程下一步) 与 clashTimer(刀光动画回调)。
     // 必须同时清,否则「跳过 NPC / 进入下一场」时残留的 clash 回调会延后触发,
     // 在错误的 idx 上二次结算,导致落到对手槽位仍为 null(待定) 的总决赛而卡死。
     function clearTimers() { clearTimeout(autoTimer); clearTimeout(clashTimer); autoTimer = null; clashTimer = null; }
+    function koAttemptSnap() {
+      return {
+        pop: P.pop, money: P.money, stab: P.stab, ever_negative: P.ever_negative,
+        injured_win: P.injured_win, yfLen: P.year_f.length, stamina: P.stamina,
+        lastStaCost: P._lastStaCost, nextGameBuff: P.nextGameBuff,
+        nextNoBadRoll: P.nextNoBadRoll, nextGameBuffUsed: P.nextGameBuffUsed,
+        firedEvents: P.fired_events instanceof Set ? new Set(P.fired_events) : P.fired_events,
+        fListLen: spec._fList.length, lastDay: spec._lastDay, finalsFmvp: spec._finalsFmvp,
+      };
+    }
+    function koRestoreAttemptSnap(s) {
+      if (!s) return;
+      P.pop = s.pop; P.money = s.money; P.stab = s.stab; P.ever_negative = s.ever_negative;
+      P.injured_win = s.injured_win; P.year_f.length = s.yfLen; P.stamina = s.stamina;
+      P._lastStaCost = s.lastStaCost; P.nextGameBuff = s.nextGameBuff;
+      P.nextNoBadRoll = s.nextNoBadRoll; P.nextGameBuffUsed = s.nextGameBuffUsed;
+      P.fired_events = s.firedEvents instanceof Set ? new Set(s.firedEvents) : s.firedEvents;
+      spec._fList.length = s.fListLen; spec._lastDay = s.lastDay; spec._finalsFmvp = s.finalsFmvp;
+    }
+    function koRedoPrompt(out) {
+      return new Promise((resolve) => {
+        const modal = kq('redo'), body = kq('redoBody'), yes = kq('redoYes'), no = kq('redoNo');
+        if (!modal || !body || !yes || !no) { resolve(false); return; }
+        const score = out && Number.isFinite(out.F) && Number.isFinite(out.opp)
+          ? `<p class="muted">剩余后悔药：${P.redo_token} 颗　·　刚才：你 ${out.F.toFixed(0)} vs 对手 ${out.opp.toFixed(0)}</p>`
+          : `<p class="muted">剩余后悔药：${P.redo_token} 颗　·　刚才这场已经判定为失利。</p>`;
+        body.innerHTML = `<p class="flavor">输了别急着摔键盘——这一颗后悔药，能让你把刚才那场重新打一遍，并重新投出全新的临场手感。</p>${score}`;
+        const done = (v) => { modal.classList.remove('show'); yes.onclick = null; no.onclick = null; resolve(v); };
+        yes.onclick = () => done(true);
+        no.onclick = () => done(false);
+        modal.classList.add('show');
+      });
+    }
+    function consumeKoRedo(snap) {
+      koRestoreAttemptSnap(snap);
+      P.redo_token -= 1;
+      P.used_redo = true;
+      if (typeof renderHUD === 'function') renderHUD();
+      updateKoBagBadge();
+      if (typeof pushLog === 'function') pushLog("后悔药生效：重打这一场。", "good");
+    }
     // 选出有效胜者:双方就位则随机,只有一方就位则视为轮空,均未就位返回 null(交由收尾结算兜底)。
     // demov4.2feedback《NPC优化·战队风格》：NPC 对局按战队实力 + 稳定性档采样发挥，强队/稳定队更稳，
     // 民间队摆动大；仍在实力区间内浮动，不再纯 50/50。
@@ -4057,10 +4139,19 @@ function runKnockoutScreen(spec) {
     }
     function runPlayerClash() {
       phase = 'clash'; renderSide();
-      playClash(() => {
+      playClash(async () => {
         if (finished) { return; }
         const key = spec.order[idx], node = spec.nodes[key], opp = koOther(node, spec.playerKey);
+        const snap = koAttemptSnap();
         const out = koDecidePlayer(spec, key, lastRoll.r, null);
+        if (!out.win && !out.fainted && P.redo_token > 0) {
+          const redo = await koRedoPrompt(out);
+          if (redo) {
+            consumeKoRedo(snap);
+            doRoll();
+            return;
+          }
+        }
         koResolve(spec, key, out.win ? spec.playerKey : opp);
         let cause = out.reason || (out.win ? `${node.score} 拿下这一场。` : `${node.score} 惜败。`);
         if (lastRoll.tier <= 2 && out.win) cause = '尽管手感不在最佳状态，' + cause;
@@ -4087,19 +4178,31 @@ function runKnockoutScreen(spec) {
       clearTimers();
       phase = 'rolling'; renderActions(true);   // 锁住晋级图按钮，避免弹窗期间重复触发
       const key = spec.order[idx], node = spec.nodes[key], stage = spec.stageOf(key);
+      grandFinalSnap = koAttemptSnap();
       const dayFirst = node.day !== spec._lastDay; spec._lastDay = node.day;
       if (dayFirst) { P.stamina = E.matchStartStamina(P); P.fired_events = new Set(); }
       const staBefore = P.stamina;
       P.stamina = Math.max(0, P.stamina - E.gameCost(stage));
       P._lastStaCost = Math.round(staBefore - P.stamina);
+      grandFinalSnap.fainted = P.stamina <= 0;
       if (typeof renderHUD === 'function') renderHUD();
       const opp = koOther(node, spec.playerKey);
       runGrandFinals({ youName: spec.teams[spec.playerKey].name, oppName: spec.teams[opp].name, kind: spec.kind })
         .then((res) => onGrandFinalsDone(res));
     }
-    function onGrandFinalsDone(res) {
+    async function onGrandFinalsDone(res) {
       if (finished) return;
       const key = spec.order[idx], node = spec.nodes[key], opp = koOther(node, spec.playerKey);
+      if (!res.win && grandFinalSnap && !grandFinalSnap.fainted && P.redo_token > 0) {
+        const redo = await koRedoPrompt(null);
+        if (redo) {
+          consumeKoRedo(grandFinalSnap);
+          grandFinalSnap = null;
+          startGrandFinals();
+          return;
+        }
+      }
+      grandFinalSnap = null;
       spec._finalsFmvp = res.fmvpIsPlayer;      // 供 settleReal 决定 FMVP 归属（求生/监管哪半场拿分多）
       koResolve(spec, key, res.win ? spec.playerKey : opp);
       node._cause = res.win

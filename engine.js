@@ -164,6 +164,30 @@ const CONFIG = {
 
 function isGoldenPlayer(p) { return !!(p && (p.abyssDarkHorse || p.golden || p.identity === "深渊黑马")); }
 
+function goldenAmateurPlayerLevels(p) {
+  const levels = [];
+  const add = (arr) => {
+    if (!Array.isArray(arr)) return;
+    arr.forEach((m) => {
+      const raw = (m && typeof m === "object") ? m.level : m;
+      const n = Number(raw);
+      if (Number.isFinite(n)) levels.push(clamp(Math.round(n), 0, 100));
+    });
+  };
+  if (p && p.golden_amateur_team && Array.isArray(p.golden_amateur_team.players)) {
+    add(p.golden_amateur_team.players);
+  }
+  if (!levels.length && p && Array.isArray(p.golden_amateur_mates)) {
+    add(p.golden_amateur_mates);
+  }
+  return levels;
+}
+function goldenOldFriendLevel(p) {
+  const levels = goldenAmateurPlayerLevels(p);
+  if (!levels.length) return randint(45, 70);   // 极旧档兜底：没有记录初始民间队四人时沿用旧口径。
+  return clamp(choiceOf(levels) + randint(-10, 5), 0, 100);
+}
+
 let GOLDEN_STAT_CANDIDATES = null;
 function goldenStatCandidates() {
   if (GOLDEN_STAT_CANDIDATES) { return GOLDEN_STAT_CANDIDATES; }
@@ -543,6 +567,7 @@ class Player {
     this.golden_old_friend_joined = false;
     this.golden_old_friend_team = "";
     this.golden_old_friend_invalid = false;
+    this.golden_old_friend_bond_ready = false;
     this.golden_old_friend_champ = false;
 
     // 年度 / 年内
@@ -888,7 +913,7 @@ function settleChamp(p, kind, year, fmvp, moneyOverride) {
   if (p.first_champ_year === null) p.first_champ_year = year;
   if (p.teno_active) p.won_with_teno = true;
   if (isGoldenPlayer(p) && p.golden_old_friend_joined && !p.golden_old_friend_invalid && p.golden_old_friend_team === p.teamName) {
-    p.golden_old_friend_champ = true;
+    p.golden_old_friend_bond_ready = true;
   }
   if (fmvp) {
     p.fmvp_total += 1; p.fmvp_per_year[year] = (p.fmvp_per_year[year] || 0) + 1;
@@ -1172,7 +1197,7 @@ const ACH_DESC = {
   "崭露头角": "深渊黑马身份下，首个职业赛年进入季后赛",
   "顶峰相见": "深渊黑马身份下，获得任意职业赛事冠军",
   "王朝新立": "深渊黑马身份下，获得深渊冠军",
-  "这就是我们的羁绊！": "选择让老队友加入战队，并与之在同一个战队中一同夺冠",
+  "这就是我们的羁绊！": "共同夺冠后点击“这就是我们之间的羁绊！”按钮",
   "人生百味": "解锁所有结局和成就",
 };
 
@@ -1746,7 +1771,7 @@ function sampleTeamWins(meta, name) {
 /* --------------------------- 暴露到全局 -------------------------------- */
 window.IVL = {
   CONFIG, SHOP_ITEMS, SHOP_RARE, SHOP_RARE_P, buildShopStock, Player, rnd, randint, triangular, gauss, clamp, choiceOf, shuffle,
-  isGoldenPlayer, goldenTeamRangeByPlace, applyGoldenSeasonDrift,
+  isGoldenPlayer, goldenAmateurPlayerLevels, goldenOldFriendLevel, goldenTeamRangeByPlace, applyGoldenSeasonDrift,
   OPP_POP: CONFIG.OPP_POP, WIN_POP: CONFIG.WIN_POP, CHAMP_REWARD: CONFIG.CHAMP_REWARD,
   selectThreshold, growthTech, growthTac, growthPhys, oppDelta, sampleOpp, popThr3,
   generateTeams, TEAM_POOLS, allocateFourStats, streamMoneyGain,

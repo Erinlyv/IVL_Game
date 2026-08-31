@@ -167,8 +167,10 @@
 #cc .npc-input:focus { border-color: var(--gold); box-shadow: 0 0 0 4px var(--gold-soft); }
 #cc .npc-field.invalid .npc-input { border-color: #f87171; box-shadow: 0 0 0 4px rgba(248,113,113,.12); }
 #cc .npc-error { min-height: 22px; margin-top: 12px; color: #fca5a5; font-size: 13px; line-height: 1.6; }
-#cc .npc-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px; }
+#cc .npc-error.ok { color: var(--ok); }
+#cc .npc-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; margin-top: 16px; }
 #cc .npc-actions .btn { min-height: 46px; }
+#cc .npc-actions .btn:disabled { opacity: .44; cursor: not-allowed; transform: none; filter: grayscale(.25); }
 
 @media (max-width: 760px) {
   #cc .app { padding: 0 14px 28px; }

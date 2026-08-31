@@ -1,6 +1,6 @@
 {
   "name": "ivl-game",
-  "version": "6.0.0",
+  "version": "6.1.0",
   "private": true,
   "description": "IVL simulator static browser game.",
   "type": "commonjs",
