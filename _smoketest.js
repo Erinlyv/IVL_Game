@@ -249,10 +249,26 @@ console.log("\n对照蒙特卡洛 v2.5（数值 v6.0）：冠军疲劳减负 + �
   const customTeams = E.generateTeams("玩家队", { domesticCount: 10, domesticNames: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"] });
   ok(customTeams.domestic.join("/") === "A/B/C/D/E/F/G/H/I/J", "自定义大陆 NPC 职业战队名称按顺序保存并使用");
 
+  const oldFriendSource = new E.Player("深渊黑马", "民间队", "F", "求生者");
+  oldFriendSource.golden_amateur_mates = [{ level: 25 }, { level: 45 }, { level: 60 }, { level: 75 }];
+  const allowedOldFriend = new Set();
+  oldFriendSource.golden_amateur_mates.forEach((m) => {
+    for (let d = -10; d <= 5; d++) { allowedOldFriend.add(E.clamp(m.level + d, 0, 100)); }
+  });
+  for (let i = 0; i < 200; i++) {
+    ok(allowedOldFriend.has(E.goldenOldFriendLevel(oldFriendSource)), "旧友数值应从开局四名民间队队友抽样并在[-10,+5]内浮动");
+  }
+
   const q = new E.Player("深渊黑马", "N", "A", "求生者");
   q.golden_first_pro_year_playoff = true;
   q.champ["夏"] = 1; q.champ["深渊"] = 1;
+  q.golden_old_friend_joined = true;
+  q.golden_old_friend_team = q.teamName;
+  E.settleChamp(q, "夏", 1, false, 0);
+  ok(q.golden_old_friend_bond_ready && !q.golden_old_friend_champ, "旧友共同夺冠后只标记待触发剧情，不提前达成成就");
+  ok(!E.computeAchievements(q, false, false, null)["这就是我们的羁绊！"], "旧友羁绊成就需点击剧情按钮后才触发");
   q.golden_old_friend_champ = true;
+  q.golden_old_friend_bond_ready = false;
   const a = E.computeAchievements(q, false, false, null);
   ok(a["崭露头角"] && a["顶峰相见"] && a["王朝新立"] && a["这就是我们的羁绊！"], "深渊黑马专属成就条件生效");
   q.golden_old_friend_invalid = true;

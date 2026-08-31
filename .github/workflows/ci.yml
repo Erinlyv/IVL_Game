@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   test:
-    name: 自测脚本（冒烟 / UI / KO / 冠亚决赛）
+    name: 自测脚本（冒烟 / UI / KO/后悔药 / 冠亚决赛）
     runs-on: ubuntu-latest
     steps:
       - name: 检出代码
@@ -39,7 +39,7 @@ jobs:
       - name: UI 冒烟（jsdom 跑通完整生涯编排）
         run: npm run test:ui
 
-      - name: KO 模块专项（季后赛 / 深渊晋级图）
+      - name: KO 模块专项（季后赛 / 深渊晋级图 / 后悔药）
         run: npm run test:ko
 
       - name: 冠亚决赛弹窗定向冲烟（7 定位 · jsdom）

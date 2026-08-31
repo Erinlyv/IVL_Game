@@ -132,6 +132,7 @@
   </svg></span>`;
   const NPC_NORMAL_COUNT = 9;
   const NPC_GOLDEN_COUNT = 10;
+  const NPC_PRESET_KEY = "ivl_npc_team_preset_v1";
 
   const STEPS = [
     { title: "建立选手档案" },
@@ -195,6 +196,8 @@
         <div class="npc-error" id="ccNpcError" role="alert" aria-live="polite"></div>
         <div class="npc-actions">
           <button class="btn btn-ghost" id="ccNpcCancel" type="button">暂不自定义</button>
+          <button class="btn btn-ghost" id="ccNpcUsePreset" type="button">采用常用方案</button>
+          <button class="btn btn-ghost" id="ccNpcSavePreset" type="button">保存为常用方案</button>
           <button class="btn btn-go" id="ccNpcSave" type="button">保存名称</button>
         </div>
       </div>
@@ -250,9 +253,12 @@
         const count = npcCountForIdentity();
         return `NPC战队：已自定义，将使用 ${count} 支大陆赛区职业战队名称。`;
       };
-      function setNpcError(msg, input) {
+      function setNpcError(msg, input, ok = false) {
         const er = $("ccNpcError");
-        if (er) { er.textContent = msg || ""; }
+        if (er) {
+          er.textContent = msg || "";
+          er.classList.toggle("ok", !!msg && !!ok);
+        }
         cc.querySelectorAll(".npc-field").forEach((f) => f.classList.remove("invalid"));
         if (input) {
           const field = input.closest(".npc-field");
@@ -262,6 +268,75 @@
       }
       function readNpcInputs() {
         return Array.from(cc.querySelectorAll("#ccNpcFields .npc-input")).map((inp) => inp.value.trim().slice(0, 12));
+      }
+      function fillNpcInputs(names) {
+        const inputs = Array.from(cc.querySelectorAll("#ccNpcFields .npc-input"));
+        inputs.forEach((input, i) => { input.value = names[i] || ""; });
+      }
+      function loadNpcPreset() {
+        try {
+          const raw = window.localStorage && window.localStorage.getItem(NPC_PRESET_KEY);
+          if (!raw) { return null; }
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed)) { return null; }
+          const names = parsed.map((name) => String(name || "").trim().slice(0, 12)).slice(0, NPC_GOLDEN_COUNT);
+          while (names.length < NPC_GOLDEN_COUNT) { names.push(""); }
+          return names.some(Boolean) ? names : null;
+        } catch (_err) {
+          return null;
+        }
+      }
+      function storeNpcPreset(names) {
+        try {
+          window.localStorage.setItem(NPC_PRESET_KEY, JSON.stringify(names.slice(0, NPC_GOLDEN_COUNT)));
+          return true;
+        } catch (_err) {
+          return false;
+        }
+      }
+      function updateNpcPresetButton() {
+        const btn = $("ccNpcUsePreset");
+        if (!btn) { return; }
+        const hasPreset = !!loadNpcPreset();
+        btn.disabled = !hasPreset;
+        btn.title = hasPreset ? "" : "暂无常用方案";
+      }
+      function validateNpcNames(raw, inputs) {
+        const count = npcCountForIdentity();
+        for (let i = 0; i < count; i++) {
+          if (!raw[i]) {
+            setNpcError(`请填写${count}支大陆赛区NPC职业战队名称。`, inputs[i]);
+            return false;
+          }
+        }
+        const seen = new Map();
+        for (let i = 0; i < raw.length; i++) {
+          if (!raw[i]) { continue; }
+          const key = raw[i].toLowerCase();
+          if (seen.has(key)) {
+            setNpcError("战队名称不可重复。", inputs[i]);
+            return false;
+          }
+          seen.set(key, i);
+        }
+        const playerTeam = String(state.team || "").trim().toLowerCase();
+        if (playerTeam) {
+          const i = raw.findIndex((name) => name && name.toLowerCase() === playerTeam);
+          if (i >= 0) {
+            setNpcError("NPC战队名称不可与玩家队伍名称重复。", inputs[i]);
+            return false;
+          }
+        }
+        return true;
+      }
+      function commitNpcNames(closeModal) {
+        const raw = readNpcInputs();
+        const inputs = Array.from(cc.querySelectorAll("#ccNpcFields .npc-input"));
+        if (!validateNpcNames(raw, inputs)) { return null; }
+        state.npcDraftNames = raw.slice(0, NPC_GOLDEN_COUNT);
+        if (closeModal) { $("ccNpcModal").classList.remove("show"); }
+        foot();
+        return state.npcDraftNames;
       }
       function renderNpcModal() {
         const count = npcCountForIdentity();
@@ -282,38 +357,35 @@
           </label>`;
         }).join("");
         setNpcError("");
+        updateNpcPresetButton();
       }
       function saveNpcNames() {
+        commitNpcNames(true);
+      }
+      function saveNpcPreset() {
+        const names = commitNpcNames(false);
+        if (!names) { return; }
+        if (!storeNpcPreset(names)) {
+          setNpcError("当前浏览器无法保存常用方案。");
+          return;
+        }
+        updateNpcPresetButton();
+        setNpcError("已保存为常用方案。", null, true);
+      }
+      function useNpcPreset() {
+        const preset = loadNpcPreset();
+        if (!preset) {
+          updateNpcPresetButton();
+          setNpcError("暂无常用方案可采用。");
+          return;
+        }
+        fillNpcInputs(preset);
         const raw = readNpcInputs();
-        const count = npcCountForIdentity();
         const inputs = Array.from(cc.querySelectorAll("#ccNpcFields .npc-input"));
-        for (let i = 0; i < count; i++) {
-          if (!raw[i]) {
-            setNpcError(`请填写${count}支大陆赛区NPC职业战队名称。`, inputs[i]);
-            return;
-          }
-        }
-        const seen = new Map();
-        for (let i = 0; i < raw.length; i++) {
-          if (!raw[i]) { continue; }
-          const key = raw[i].toLowerCase();
-          if (seen.has(key)) {
-            setNpcError("战队名称不可重复。", inputs[i]);
-            return;
-          }
-          seen.set(key, i);
-        }
-        const playerTeam = String(state.team || "").trim().toLowerCase();
-        if (playerTeam) {
-          const i = raw.findIndex((name) => name && name.toLowerCase() === playerTeam);
-          if (i >= 0) {
-            setNpcError("NPC战队名称不可与玩家队伍名称重复。", inputs[i]);
-            return;
-          }
-        }
+        if (!validateNpcNames(raw, inputs)) { return; }
         state.npcDraftNames = raw.slice(0, NPC_GOLDEN_COUNT);
-        $("ccNpcModal").classList.remove("show");
         foot();
+        setNpcError("已采用常用方案。", null, true);
       }
       function openNpcModal() {
         renderNpcModal();
@@ -545,6 +617,8 @@
 
       $("ccback").onclick = () => { if (state.step > 0) { state.step--; render(); } };
       $("ccNpcNames").onclick = openNpcModal;
+      $("ccNpcUsePreset").onclick = useNpcPreset;
+      $("ccNpcSavePreset").onclick = saveNpcPreset;
       $("ccNpcSave").onclick = saveNpcNames;
       $("ccNpcCancel").onclick = () => $("ccNpcModal").classList.remove("show");
       $("ccNpcClose").onclick = () => $("ccNpcModal").classList.remove("show");

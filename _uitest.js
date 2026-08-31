@@ -56,6 +56,8 @@ function clickOne() {
   // NPC 场跳过 / 玩家场点上场掷骰、点下一场。配合 window.__KO_FAST 关闭动画时序。
   const ko = q("#koscreen");
   if (ko) {
+    const redo = q("#ko-redo");
+    if (redo && redo.classList.contains("show")) { q("#ko-redoYes").click(); return true; }
     const cer = q("#ko-ceremony");
     if (cer && cer.classList.contains("show")) { q("#ko-cerDone").click(); return true; }
     const rep = q("#ko-report");
@@ -319,6 +321,9 @@ async function testNpcTeamCustomization() {
   d.querySelector("#ccNpcNames").click();
   const inputs = Array.from(d.querySelectorAll("#ccNpcFields .npc-input"));
   if (inputs.length !== 10) { throw new Error("NPC 队名弹窗应提供 10 个输入框，实际：" + inputs.length); }
+  if (!d.querySelector("#ccNpcUsePreset") || !d.querySelector("#ccNpcSavePreset")) {
+    throw new Error("NPC 队名弹窗应提供采用/保存常用方案按钮");
+  }
   const labels = Array.from(d.querySelectorAll("#ccNpcFields .npc-field span")).map((x) => x.textContent.trim());
   if (labels[9] !== "10.仅深渊黑马模式需填写") {
     throw new Error("NPC 第 10 项标签不符合反馈：" + labels[9]);
@@ -330,6 +335,19 @@ async function testNpcTeamCustomization() {
     throw new Error("NPC 队名重复时应展示就近错误提示");
   }
   inputs.forEach((inp, i) => fire(inp, "NPC" + (i + 1)));
+  d.querySelector("#ccNpcSavePreset").click();
+  const preset = JSON.parse(dx.window.localStorage.getItem("ivl_npc_team_preset_v1") || "[]");
+  if (preset[0] !== "NPC1" || preset[9] !== "NPC10") {
+    throw new Error("NPC 常用方案应写入 localStorage 并保留第 10 支：" + preset.join("/"));
+  }
+  if (!d.querySelector("#ccNpcError").textContent.includes("已保存为常用方案")) {
+    throw new Error("保存 NPC 常用方案后应展示成功提示");
+  }
+  inputs.forEach((inp, i) => fire(inp, "Temp" + (i + 1)));
+  d.querySelector("#ccNpcUsePreset").click();
+  if (inputs[0].value !== "NPC1" || inputs[9].value !== "NPC10") {
+    throw new Error("采用 NPC 常用方案应回填已保存的队名");
+  }
   d.querySelector("#ccNpcSave").click();
   if (d.querySelector("#ccNpcModal").classList.contains("show")) {
     throw new Error("NPC 队名修正后应成功保存并关闭弹窗");
@@ -353,7 +371,7 @@ async function testNpcTeamCustomization() {
   if (resolved.customNpcTeams.join("/") !== "NPC1/NPC2/NPC3/NPC4/NPC5/NPC6/NPC7/NPC8/NPC9/NPC10") {
     throw new Error("深渊黑马自定义 NPC 队名返回值不正确：" + resolved.customNpcTeams.join("/"));
   }
-  console.log("[NPC战队名称] UI 断言通过：弹窗 10 输入、重复校验、深渊黑马返回 10 支自定义队名。");
+  console.log("[NPC战队名称] UI 断言通过：弹窗 10 输入、重复校验、常用方案保存/采用、深渊黑马返回 10 支自定义队名。");
 }
 
 async function run() {
