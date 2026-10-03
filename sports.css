@@ -1,0 +1,57 @@
+/* v7.0: scope branch styles so the club UI stays unchanged. */
+body.sports-active {
+/* ivl-base.css 为 IVL_Game/styles.css 的字节级副本。
+   主体色板、字阶、字重、边框、圆角、阴影及组件动效均由原样式提供。
+   以下只定义运动会新增数据布局、8队签表拓扑和独立预览控件。 */
+&{height:auto;min-height:100dvh;overflow-x:clip}
+button,select{touch-action:manipulation}button:focus-visible,summary:focus-visible,select:focus-visible{outline:2px solid var(--gold2);outline-offset:3px}
+.stage{min-width:0}.main:focus{outline:none}.choice:active{filter:brightness(.96)}
+.selection-grid{display:flex;flex-direction:column;gap:11px;margin-top:22px}
+.meta-strip{display:flex;gap:8px;margin:16px 0}.meta-strip>div{flex:1;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 11px}.meta-strip b{display:block;color:var(--gold2);font-family:'Sora',sans-serif;font-size:15px}.meta-strip span{color:var(--muted);font-size:12px}
+.plain-summary{margin:14px 0;color:var(--fg);font-size:14px;line-height:1.75}
+.panel-head{display:flex;align-items:center;justify-content:space-between;gap:16px;z-index:8}.panel-head h2{min-width:0;margin-bottom:0}.round-note{position:relative;flex:none;margin:-7px 0 -7px auto;padding:7px 0}.round-note summary{display:flex;align-items:center;justify-content:center;min-width:68px;min-height:30px;padding:0 10px;border:1px solid var(--line2);border-radius:999px;background:var(--surface2);color:var(--muted);font-size:10.5px;line-height:1;cursor:pointer;list-style:none;user-select:none}.round-note summary::-webkit-details-marker{display:none}.round-note summary::after{content:'+';margin-left:5px;color:var(--gold2);font-family:'Chakra Petch',sans-serif;font-size:13px}.round-note[open] summary{border-color:rgba(226,181,62,.45);color:var(--gold2);background:var(--gold-soft)}.round-note[open] summary::after{content:'−'}.round-note-pop{position:absolute;z-index:30;top:calc(100% + 1px);right:0;width:min(340px,calc(100vw - 56px));padding:13px 14px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--surface2);box-shadow:0 18px 38px rgba(0,0,0,.48);color:var(--fg);font-size:12px;line-height:1.75;font-weight:400;text-align:left}
+.badge{display:inline-block;color:var(--gold2);font-size:11px;margin-left:5px}.hintline,.score-note{font-size:13px;line-height:1.7;color:var(--muted);margin:12px 0}.section-label,.cup-subtitle{font-family:'Sora',sans-serif;font-size:13px;color:var(--gold2);margin:18px 0 10px}.member-value{text-align:right;font-family:'Sora',sans-serif;color:var(--gold2);font-size:13px;flex:none}.member-value small{display:block;font-size:11px;color:var(--muted);font-weight:400}.stand-row .st-name{min-width:0;overflow-wrap:anywhere}.stand-row .st-name small{display:block;font-size:11.5px;color:var(--muted)}
+.edit-player-id{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;margin-left:4px;padding:0;border:1px solid var(--line2);border-radius:5px;background:transparent;color:var(--muted);font-size:14px;line-height:1;vertical-align:middle;cursor:pointer}.edit-player-id:hover,.edit-player-id:focus-visible{color:var(--gold2);border-color:var(--gold2);background:var(--gold-soft)}
+.player-id-input{width:min(180px,55vw);height:26px;padding:2px 7px;border:1px solid var(--gold2);border-radius:5px;background:var(--bg2);color:var(--fg);font:inherit;font-size:11.5px;outline:0;box-shadow:0 0 0 2px var(--gold-soft)}
+.tabs{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.tabs .intbtn{min-height:44px}.table-wrap{overflow:auto;border:1px solid var(--line2);border-radius:var(--r-sm)}.data-table{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums;text-align:left}.data-table th,.data-table td{padding:9px 11px;border-bottom:1px solid var(--line)}.data-table th{color:var(--muted);font-weight:500;background:var(--bg2)}.data-table th:nth-child(n+3),.data-table td:nth-child(n+3){text-align:right;white-space:nowrap}.data-table tr:last-child td{border-bottom:0}.data-table .me{background:var(--gold-soft);color:var(--gold2)}.data-table caption{padding:10px;text-align:left;color:var(--muted);background:var(--bg2)}
+.trial-scores{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.trial-scores span{font-size:12px;color:var(--muted)}.trial-scores b{color:var(--gold2)}.dice-stage .trial-die{width:56px;height:56px;color:var(--gold2);margin:0 auto 10px}.dice-stage .dice-result{max-width:100%;padding:16px}.training-log{margin-top:12px}.training-log .standings{padding:0 12px 12px}.training-log p{padding-inline:12px}.training-balance{display:flex;flex-wrap:wrap;gap:10px;color:var(--muted);font-size:13px;margin-top:12px}.training-balance b{color:var(--gold2)}
+.country{display:flex;align-items:center;gap:10px}.flag-mark{color:var(--gold2)}.country b{font-family:'Sora',sans-serif}.champion-stamp{padding:16px;text-align:center;border:1px solid var(--line2);background:var(--bg2);border-radius:var(--r-md);margin:14px 0}.champion-stamp small{color:var(--muted);display:block}.champion-stamp strong{font-family:'Sora',sans-serif;font-size:24px;color:var(--gold2)}.achievement{display:flex;align-items:center;gap:12px;padding:13px 16px;border:1px solid var(--line2);background:var(--bg2);border-radius:var(--r-sm);margin:14px 0}.achievement svg{width:30px;height:30px;color:var(--gold2)}.achievement b{color:var(--gold2)}.achievement p{font-size:12px;color:var(--muted)}.ending-mark svg{width:64px;height:64px;color:var(--gold2)}.ending-quote{text-align:center;font-size:21px;color:var(--gold2);padding:24px 0;line-height:1.8}
+/* 赛事舞台：原版布局与组件；八强签表去除“12进8”和季军赛列。 */
+#koscreen.sports-cup .daycols,#koscreen.sports-cup .grid{grid-template-columns:repeat(2,minmax(150px,1fr)) 210px repeat(2,minmax(150px,1fr));gap:14px}
+#koscreen.sports-cup .field{min-width:920px}#koscreen.sports-cup .col{height:415px}
+#koscreen .cup-bronze{position:absolute;top:340px;width:100%;text-align:center;color:var(--muted);font-size:11px;line-height:1.7}
+#koscreen .champ .trophy svg{width:40px;height:40px;color:var(--gold2)}
+#koscreen .cup-narr{font-size:13.5px;color:var(--fg);line-height:1.75;margin:10px 0 15px}#koscreen .cup-narr p+p{margin-top:8px}
+#koscreen .cup-note{font-size:12px;color:var(--muted);line-height:1.7;margin:10px 0}
+#koscreen .tabs{margin-bottom:14px}#koscreen .data-table{font-size:13px}#koscreen .data-table td,#koscreen .data-table th{padding:11px 14px}
+#koscreen .gamelog{margin-top:12px}#koscreen .notice-more{margin-top:18px}#koscreen .notice-more p{font-size:12.5px;line-height:1.8}
+#koscreen .cup-medal{width:90px;height:106px;display:block;margin:0 auto;color:var(--gold2)}#koscreen .cup-medal.silver{color:#cfd6e4}#koscreen .cup-medal.bronze{color:#cd9a5c}
+#koscreen .cer-story{padding:0 22px;text-align:left}#koscreen .ceremony-copy{font-size:14px;line-height:1.85;color:var(--fg)}#koscreen .ceremony-copy p{margin-bottom:12px}#koscreen .cup-achievement{color:var(--gold2);font-size:13px;margin:0 22px 16px}
+#koscreen .sheet.cer{max-height:92dvh;overflow:auto}#koscreen .cer-trophy{animation:none}
+#gfOverlay .help{min-height:32px}#gfOverlay .help:disabled{opacity:.4;cursor:wait}#gfOverlay.restoring .pop{visibility:hidden}#gfOverlay.restoring::after{content:'正在恢复已保存的比赛…';color:var(--gold2);font-size:14px}
+/* 预览和成员信息用原版面板与输入色，放在独立对话框中。 */
+.demo-footer{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:10px;margin-top:24px;color:var(--muted);font-size:11px}.demo-footer .intbtn{min-height:44px;font-size:12px}
+dialog{color:var(--fg);border:1px solid var(--line2);background:linear-gradient(180deg,var(--surface),var(--bg2));border-radius:20px;padding:22px;width:min(640px,calc(100% - 32px));max-height:90dvh;margin:auto;box-shadow:0 40px 80px rgba(0,0,0,.6)}dialog::backdrop{background:rgba(5,7,13,.74);backdrop-filter:blur(5px)}.dialog-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.dialog-head h2{font-family:'Sora',sans-serif;font-size:20px}dialog h3{font-size:13px;color:var(--gold2);margin:20px 0 10px}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px}.form-grid label{font-size:12px;color:var(--muted)}select{display:block;width:100%;margin-top:6px;min-height:44px;font-size:14px;color:var(--fg);background:var(--bg2);border:1px solid var(--line2);border-radius:var(--r-sm);padding:8px}.preview-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.preview-grid button{min-height:44px;font-size:12px}.footnote{margin-top:18px;font-size:12px}#roster-close{margin-top:16px;min-height:44px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}.skip-link{position:absolute;left:12px;top:-100px;z-index:10;background:var(--gold2);color:var(--bg);padding:10px}.skip-link:focus{top:10px}
+@media(max-width:1080px){#koscreen.sports-cup .ko-layout{grid-template-columns:320px minmax(0,1fr)}#koscreen.sports-cup .ko-top .idchip{display:none}}
+@media(max-width:600px){
+  .meta-strip{flex-wrap:wrap}.meta-strip>div{min-width:80px}.meta-strip b{font-size:13px}.meta-strip span{font-size:11px}
+  .data-table th,.data-table td{padding:8px 5px;font-size:11px}.data-table .muted{font-size:11px}.member-value{font-size:12px}.stand-row .st-rank{width:18px;font-size:12px}.stand-row .st-name{font-size:12px}.tabs{gap:6px}.tabs .intbtn{font-size:11px;padding:7px 9px}
+  .form-grid{grid-template-columns:1fr}.preview-grid{grid-template-columns:1fr 1fr}.demo-footer{gap:7px}.logwrap.open{z-index:2200}
+  #koscreen.sports-cup{overflow-y:auto}#koscreen.sports-cup .ko-layout{height:auto;display:flex;flex-direction:column;overflow:visible}
+  #koscreen.sports-cup .side{flex:none;overflow:visible;max-height:none}#koscreen.sports-cup .bracketwrap{flex:none;overflow:hidden;padding:12px;min-height:230px}
+  #koscreen.sports-cup .field{width:920px;min-width:920px;transform:scale(calc((100vw - 24px)/920px));height:calc(470px * (100vw - 24px)/920px);transform-origin:top left}
+  #koscreen.sports-cup .field .grid{height:415px}#koscreen.sports-cup svg.links{display:block;height:470px}
+  #koscreen.sports-cup .data-table td,#koscreen.sports-cup .data-table th{padding:9px 7px;font-size:12px}
+  #koscreen.sports-cup .ko-top{grid-template-columns:1fr auto auto;position:relative}#koscreen.sports-cup .ko-top .brand{grid-column:1/-1}.sports-cup .ko-top .spacer{display:none}#koscreen.sports-cup .ko-top .ko-bagbtn{min-height:44px}
+  #koscreen.sports-cup .cup-narr{font-size:13px}#koscreen.sports-cup .notice-more{margin-top:14px}
+  .panel-head{gap:8px}.round-note summary{min-width:64px;padding-inline:9px}.round-note-pop{width:min(300px,calc(100vw - 40px))}
+}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* 全屏赛事时收起生涯外壳，避免背景页面继续滚动。 */
+.app[inert]{display:none}
+
+#match-intro{padding:24px;max-width:560px}#match-intro .panel-body{padding:0;font-size:15px;line-height:1.9}#match-intro .choices{padding:0;margin-top:20px}
+
+}

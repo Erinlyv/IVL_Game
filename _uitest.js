@@ -26,7 +26,7 @@ global.Event = dom.window.Event;
 // 在 jsdom 的 window 作用域里执行两份脚本，使其 const/函数互通且 window.IVL 可见
 const engineSrc = fs.readFileSync(path.join(__dirname, "engine.js"), "utf8");
 const chargenSrc = fs.readFileSync(path.join(__dirname, "chargen.js"), "utf8");
-const gameSrc = fs.readFileSync(path.join(__dirname, "game.js"), "utf8");
+const gameSrc = ["sports-copy.js", "sports-finals.js", "sports.js", "game.js"].map(f => fs.readFileSync(path.join(__dirname, f), "utf8")).join("\n;//---\n");
 dom.window.eval(engineSrc + "\n;//---\n" + chargenSrc + "\n;//---\n" + gameSrc);
 
 const TARGET = parseInt(process.argv[2] || "3", 10);
@@ -38,6 +38,12 @@ let endings = [];
 let inEnding = false;
 
 function clickOne() {
+  if (d.body.classList.contains("sports-active")) {
+    const decline=q('[data-action="decline"]');
+    const back=q('[data-action="returnCareer"]');
+    if(decline){decline.click();return true;}
+    if(back){back.click();return true;}
+  }
   // === v4.1 结局/成就图鉴弹窗（独立 overlay，结局界面会 await 其关闭）：直接关闭以继续流程 ===
   const cxm = q("#codexModal");
   if (cxm && cxm.classList.contains("show")) { q("#cxX").click(); return true; }
@@ -118,6 +124,7 @@ function clickOne() {
     if (next && !next.disabled) { next.click(); return true; }
     return true; // 覆盖层仍在但需等待渲染
   }
+  const trainClose=q("#trainResultClose");if(trainClose){trainClose.click();return true;}
   // 2) 训练项目
   const projs = qa(".trainproj").filter(b => !b.disabled && !b.classList.contains("disabled"));
   if (projs.length) { projs[Math.floor(Math.random() * projs.length)].click(); return true; }
@@ -384,10 +391,12 @@ async function run() {
   let idle = 0, ticks = 0;
   while (endings.length < TARGET && ticks < 200000) {
     ticks++;
+    if(ticks%5000===0)console.log("UI progress",ticks,(q("#main h2")||{}).textContent,(q("#koscreen .cause")||{}).textContent,(q("#rs-root #rs-continueBtn")||{}).textContent);
     const acted = clickOne();
-    if (!acted) { idle++; if (idle > 5) break; } else idle = 0;
-    await new Promise((r) => setImmediate(r));
+    if (!acted) { idle++; if (idle > 500) throw new Error("UI stalled: " + d.body.textContent.slice(-1000)); } else idle = 0;
+    await new Promise((r) => setTimeout(r, 1));
   }
+  if(endings.length<TARGET)throw new Error("未完成目标生涯数");
   console.log(`UI 冲烟完成：ticks=${ticks}，跑通生涯 ${endings.length} 段`);
   console.log("结局序列：", endings);
 }
