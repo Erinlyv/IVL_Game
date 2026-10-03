@@ -14,165 +14,109 @@
   <link rel="stylesheet" media="print" onload="this.media='all'"
         href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Chakra+Petch:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;600;700;900&display=swap" />
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Chakra+Petch:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;600;700;900&display=swap" /></noscript>
-  <link rel="preload" as="image" href="assets/ivl-arena-hero-v4.png" fetchpriority="high" />
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="chargen.css" />
   <link rel="stylesheet" href="sports.css" />
-  <!-- 启动页：电竞赛事转播 × 选手生涯档案，样式仅作用于 #splash -->
+  <!-- v4.0 启动页（取自 UI设计/demo9-启动页A-电影首帧.html），样式统一作用域到 #splash 以免与正文样式冲突 -->
   <style>
-    #splash { --sp-bg:#07101f; --sp-panel:#101c30; --sp-fg:#eef2f8; --sp-muted:#9fabc2; --sp-dim:#6b7894;
-      --sp-gold:#e2b53e; --sp-gold2:#f5cf6a; position: fixed; inset: 0; z-index: 1000;
-      display: grid; place-items: center; min-height: 100vh; min-height: 100dvh; padding: max(24px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
-      overflow: hidden; background: var(--sp-bg); color: var(--sp-fg); text-align: center;
-      font-family: 'Noto Sans SC', -apple-system, 'PingFang SC', sans-serif; isolation: isolate;
-      transition: opacity .5s ease; }
+    #splash { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; text-align: center;
+      padding: 30px; overflow: hidden; background: #05070d; color: #eef2f8;
+      font-family: 'Noto Sans SC', -apple-system, 'PingFang SC', sans-serif;
+      transition: opacity .6s ease; }
     #splash.hide { opacity: 0; pointer-events: none; }
-    #splash .bgfx { position: absolute; inset: 0; z-index: -4;
+    #splash .bgfx { position: absolute; inset: -10%; z-index: 0;
       background:
-        radial-gradient(ellipse 42% 61% at 50% 42%, rgba(5,13,28,.88) 0%, rgba(5,13,28,.70) 44%, rgba(5,13,28,.18) 77%, transparent 100%),
-        linear-gradient(180deg, rgba(3,8,17,.35) 0%, rgba(5,13,27,.16) 42%, rgba(4,10,20,.18) 68%, rgba(3,8,16,.64) 100%),
-        linear-gradient(90deg, rgba(3,8,17,.48) 0%, transparent 28%, transparent 72%, rgba(3,8,17,.48) 100%),
-        url("assets/ivl-arena-hero-v4.png") center center / cover no-repeat,
-        #07101f;
-      filter:saturate(.94) contrast(1.06); transform:scale(1.015); }
-    #splash .sp-grid { position:absolute; inset:0; z-index:-3; opacity:.18; pointer-events:none;
-      background-image: linear-gradient(rgba(159,171,194,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(159,171,194,.08) 1px, transparent 1px);
-      background-size: 64px 64px; mask-image: linear-gradient(to bottom, transparent 3%, #000 28%, #000 72%, transparent 97%); }
-    #splash .sp-beams { position:absolute; inset:-12% -8%; z-index:-2; pointer-events:none;
-      background: conic-gradient(from 199deg at 50% -5%, transparent 0 9%, rgba(245,207,106,.09) 12%, transparent 17% 30%, rgba(110,168,254,.06) 34%, transparent 39% 100%);
-      animation: sp-sway 10s ease-in-out infinite alternate; }
-    #splash .sp-stage { position:absolute; left:50%; bottom:-12vh; z-index:-1; width:min(1080px,92vw); aspect-ratio:2.4; transform:translateX(-50%) perspective(700px) rotateX(68deg);
-      border:1px solid rgba(226,181,62,.14); background: repeating-linear-gradient(90deg, transparent 0 8%, rgba(226,181,62,.08) 8.1% 8.25%), repeating-linear-gradient(0deg, transparent 0 16%, rgba(159,171,194,.08) 16.2% 16.5%);
-      box-shadow:0 0 80px rgba(226,181,62,.1); opacity:.56; }
-    #splash::before, #splash::after { content:""; position:absolute; top:0; bottom:0; width:1px; z-index:-1; background:linear-gradient(transparent 8%, rgba(226,181,62,.34) 28%, rgba(226,181,62,.08) 72%, transparent 92%); }
-    #splash::before { left:clamp(20px,5vw,72px); } #splash::after { right:clamp(20px,5vw,72px); }
-    @keyframes sp-sway { from { transform:translateX(-1.5%) rotate(-.8deg); } to { transform:translateX(1.5%) rotate(.8deg); } }
-    #splash .sp-shell { width:min(1120px,100%); min-width:0; display:grid; grid-template-rows:auto 1fr auto; min-height:min(720px,calc(100dvh - 48px)); animation:sp-rise .7s cubic-bezier(.16,1,.3,1) both; }
-    @keyframes sp-rise { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:none; } }
-    #splash .sp-topline { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:0 0 14px; border-bottom:1px solid rgba(255,255,255,.1); font-family:'Sora',sans-serif; font-size:10px; letter-spacing:2.4px; color:var(--sp-muted); text-align:left; }
-    #splash .sp-channel { display:inline-flex; align-items:center; gap:9px; color:var(--sp-gold2); font-weight:700; white-space:nowrap; }
-    #splash .sp-channel::before { content:""; width:7px; height:7px; border:1px solid var(--sp-gold2); background:rgba(245,207,106,.22); box-shadow:0 0 0 4px rgba(245,207,106,.07); animation:sp-pulse 2.4s ease-in-out infinite; }
-    @keyframes sp-pulse { 50% { opacity:.45; } }
-    #splash .sp-mode { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    #splash .sp-main { align-self:center; position:relative; display:grid; place-items:center; padding:42px 0 36px; }
-    #splash .sp-reticle { position:absolute; inset:22px 0; pointer-events:none; opacity:.62; background:
-      linear-gradient(var(--sp-gold),var(--sp-gold)) left top/52px 1px no-repeat,
-      linear-gradient(var(--sp-gold),var(--sp-gold)) left top/1px 52px no-repeat,
-      linear-gradient(var(--sp-gold),var(--sp-gold)) right top/52px 1px no-repeat,
-      linear-gradient(var(--sp-gold),var(--sp-gold)) right top/1px 52px no-repeat,
-      linear-gradient(var(--sp-gold),var(--sp-gold)) left bottom/52px 1px no-repeat,
-      linear-gradient(var(--sp-gold),var(--sp-gold)) left bottom/1px 52px no-repeat,
-      linear-gradient(var(--sp-gold),var(--sp-gold)) right bottom/52px 1px no-repeat,
-      linear-gradient(var(--sp-gold),var(--sp-gold)) right bottom/1px 52px no-repeat; }
-    #splash .sp-reticle::before, #splash .sp-reticle::after { content:""; position:absolute; top:50%; width:clamp(24px,8vw,106px); height:1px; background:linear-gradient(90deg,rgba(226,181,62,.1),rgba(226,181,62,.68)); }
-    #splash .sp-reticle::before { left:0; } #splash .sp-reticle::after { right:0; transform:rotate(180deg); }
-    #splash .menu { position:relative; z-index:2; width:min(620px,86%); }
-    #splash .sp-kicker { display:inline-flex; align-items:center; gap:12px; margin-bottom:14px; font-family:'Sora',sans-serif; font-size:10px; font-weight:600; letter-spacing:3px; color:var(--sp-gold2); }
-    #splash .sp-kicker::before, #splash .sp-kicker::after { content:""; width:32px; height:1px; background:rgba(226,181,62,.5); }
-    #splash .sp-logo { margin:0; font-family:'Sora',sans-serif; font-weight:800; font-style:italic; letter-spacing:-4px; line-height:.86;
-      font-size:clamp(88px,18vw,178px); transform:skewX(-5deg);
-      background:linear-gradient(180deg,#fff7e3 5%,#f5cf6a 46%,#b88420 100%);
+        radial-gradient(900px 560px at 50% -8%, rgba(226,181,62,.20), transparent 55%),
+        radial-gradient(760px 620px at 16% 116%, rgba(59,90,160,.34), transparent 56%),
+        radial-gradient(700px 620px at 88% 108%, rgba(110,168,254,.16), transparent 58%),
+        #0b1120;
+      animation: sp-drift 30s ease-in-out infinite alternate; }
+    @keyframes sp-drift { from { transform: scale(1.05) translate(0,0); } to { transform: scale(1.14) translate(-1.5%,-1%); } }
+    #splash .beam { position: absolute; top: -12%; left: 50%; width: 64vw; height: 80vh; z-index: 1; transform: translateX(-50%);
+      background: conic-gradient(from 180deg at 50% 0, transparent 42%, rgba(245,207,106,.12) 50%, transparent 58%);
+      filter: blur(6px); pointer-events: none; animation: sp-sway 12s ease-in-out infinite alternate; }
+    @keyframes sp-sway { from { transform: translateX(-50%) rotate(-2.5deg); } to { transform: translateX(-50%) rotate(2.5deg); } }
+    #splash .orbs { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+    #splash .orb { position: absolute; width: 4px; height: 4px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(245,207,106,.95), rgba(245,207,106,0) 70%);
+      filter: drop-shadow(0 0 6px rgba(245,207,106,.7)); opacity: 0;
+      animation: sp-wander var(--d,22s) ease-in-out var(--delay,0s) infinite; }
+    #splash .orb.w { background: radial-gradient(circle, rgba(255,255,255,.9), rgba(255,255,255,0) 70%);
+      filter: drop-shadow(0 0 6px rgba(255,255,255,.6)); }
+    #splash .orb.b { background: radial-gradient(circle, rgba(150,190,255,.9), rgba(150,190,255,0) 70%);
+      filter: drop-shadow(0 0 6px rgba(130,175,255,.6)); }
+    @keyframes sp-wander {
+      0% { opacity: 0; transform: translate(0,0); }
+      15% { opacity: .9; }
+      50% { transform: translate(var(--mx,30px), var(--my,-46px)); }
+      85% { opacity: .7; }
+      100% { opacity: 0; transform: translate(calc(var(--mx,30px)*.4), calc(var(--my,-46px)*1.8)); }
+    }
+    #splash .vignette { position: absolute; inset: 0; z-index: 2; pointer-events: none;
+      background: radial-gradient(120% 90% at 50% 45%, transparent 55%, rgba(0,0,0,.6)); }
+    #splash .menu { position: relative; z-index: 3; animation: sp-rise 1s cubic-bezier(.16,1,.3,1) both; }
+    @keyframes sp-rise { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: none; } }
+    #splash .sp-logo { font-family: 'Sora'; font-weight: 800; letter-spacing: 2px; line-height: .92;
+      font-size: clamp(74px,18vw,176px);
+      background: linear-gradient(180deg, #f1e6cf 20%, #e3b840 126%);
       -webkit-background-clip: text; background-clip: text; color: transparent;
-      filter:drop-shadow(0 18px 32px rgba(226,181,62,.18)); }
-    #splash .sp-sub { margin-top:18px; font-family:'Sora',sans-serif; font-weight:600; letter-spacing:clamp(6px,1.6vw,13px); font-size:clamp(12px,1.5vw,16px); color:#d8deea; }
-    #splash .sp-deck { max-width:440px; margin:15px auto 0; color:var(--sp-muted); font-size:13px; line-height:1.65; letter-spacing:.8px; }
-    #splash .sp-meta { display:flex; justify-content:center; align-items:stretch; margin:27px auto 0; width:min(430px,100%); border-block:1px solid rgba(255,255,255,.1); }
-    #splash .sp-stat { flex:1; min-width:0; padding:9px 12px 10px; }
-    #splash .sp-stat + .sp-stat { border-left:1px solid rgba(255,255,255,.1); }
-    #splash .sp-stat b, #splash .sp-stat span { display:block; font-family:'Sora',sans-serif; }
-    #splash .sp-stat b { font-size:12px; color:var(--sp-fg); letter-spacing:1px; }
-    #splash .sp-stat span { margin-top:1px; font-size:9px; color:var(--sp-dim); letter-spacing:1.5px; }
-    #splash .btns { display:flex; flex-direction:column; align-items:center; gap:12px; margin-top:28px; }
-    #splash .mbtn { position:relative; display:inline-flex; align-items:center; justify-content:center; gap:12px; width:min(340px,100%); min-height:52px; padding:13px 26px; border-radius:10px; cursor:pointer; touch-action:manipulation;
-      font-family:'Noto Sans SC',sans-serif; font-weight:700; font-size:16px; letter-spacing:1.5px; color:var(--sp-fg);
-      background:rgba(16,28,48,.78); border:1px solid rgba(255,255,255,.18);
-      transition:transform .2s cubic-bezier(.16,1,.3,1),border-color .2s,background .2s,box-shadow .2s,filter .2s; }
-    #splash .mbtn svg { width:19px; height:19px; flex:0 0 auto; }
-    #splash .mbtn:hover { transform:translateY(-2px); border-color:var(--sp-gold2); background:#182842; }
-    #splash .mbtn:active { transform:translateY(0) scale(.985); }
-    #splash .mbtn:focus-visible { outline:3px solid #fff3c4; outline-offset:4px; }
+      filter: drop-shadow(0 10px 50px rgba(226,181,62,.34)); animation: sp-glow 5s ease-in-out infinite; }
+    @keyframes sp-glow { 50% { filter: drop-shadow(0 10px 70px rgba(245,207,106,.55)); } }
+    #splash .sp-sub { font-family: 'Sora'; font-weight: 500; letter-spacing: 9px; font-size: clamp(12px,2.4vw,17px);
+      color: #9fabc2; margin-top: 8px; }
+    #splash .btns { display: flex; flex-direction: column; align-items: center; gap: 15px; margin-top: 50px; }
+    #splash .mbtn { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 12px;
+      width: min(340px,78vw); font-family: 'Sora'; font-weight: 700; font-size: 18px; letter-spacing: 1px;
+      padding: 17px 30px; border-radius: 13px; cursor: pointer; color: #eef2f8;
+      background: rgba(19,29,49,.5); border: 1px solid rgba(255,255,255,.14); backdrop-filter: blur(8px);
+      transition: transform .2s cubic-bezier(.16,1,.3,1), border-color .2s, background .2s, box-shadow .2s, letter-spacing .2s; }
+    #splash .mbtn svg { width: 20px; height: 20px; opacity: .85; }
+    #splash .mbtn:hover { transform: translateY(-2px) scale(1.015); border-color: #f5cf6a; background: rgba(29,41,66,.72); letter-spacing: 2px; }
+    #splash .mbtn:focus-visible { outline: 2px solid #f5cf6a; outline-offset: 3px; }
     #splash .mbtn[hidden] { display: none; }
-    #splash .mbtn.primary { color:#181205; background:linear-gradient(115deg,#f7d56e,#dca72d); border-color:#ffe294; box-shadow:0 12px 32px rgba(226,181,62,.24); }
-    #splash .mbtn.primary:hover { filter:brightness(1.08); box-shadow:0 16px 38px rgba(226,181,62,.34); }
-    #splash .mbtn.primary::before { content:""; position:absolute; inset:4px; border:1px solid rgba(77,53,8,.18); border-radius:6px; pointer-events:none; }
-    #splash .sp-bottom { display:flex; align-items:flex-end; justify-content:space-between; gap:24px; padding-top:14px; border-top:1px solid rgba(255,255,255,.1); text-align:left; }
-    #splash .sp-file { display:grid; grid-template-columns:auto auto; gap:2px 12px; font-family:'Sora',sans-serif; font-size:9px; letter-spacing:1.4px; color:var(--sp-dim); }
-    #splash .sp-file b { color:var(--sp-muted); font-weight:600; }
-    #splash .ver { flex:none; font-family:'Sora',sans-serif; font-size:9px; letter-spacing:2px; color:var(--sp-dim); }
-    @media (max-width:600px) {
-      #splash { padding-inline:max(16px,env(safe-area-inset-left)); }
-      #splash .bgfx { background-position:center center; transform:scale(1.02); }
-      #splash .sp-grid { opacity:.12; }
-      #splash .sp-shell { min-height:calc(100dvh - 40px); }
-      #splash .sp-topline { letter-spacing:1.4px; }
-      #splash .sp-mode { max-width:46vw; text-align:right; }
-      #splash .sp-main { padding:28px 0 24px; }
-      #splash .sp-reticle { inset:12px 0; }
-      #splash .menu { width:min(100%,420px); padding-inline:18px; }
-      #splash .sp-logo { font-size:clamp(84px,31vw,120px); letter-spacing:-3px; }
-      #splash .sp-sub { margin-top:14px; letter-spacing:7px; }
-      #splash .sp-deck { font-size:12px; }
-      #splash .sp-meta { margin-top:22px; }
-      #splash .sp-stat { padding-inline:7px; }
-      #splash .sp-stat b { font-size:11px; }
-      #splash .sp-stat span { font-size:8px; letter-spacing:1px; }
-      #splash .btns { margin-top:23px; }
-      #splash .mbtn { width:100%; min-height:52px; }
-      #splash .sp-file { display:none; }
-      #splash .sp-bottom { justify-content:center; }
-    }
-    @media (max-height:680px) {
-      #splash .sp-shell { min-height:calc(100dvh - 32px); }
-      #splash .sp-main { padding-block:16px; }
-      #splash .sp-logo { font-size:clamp(72px,20vh,118px); }
-      #splash .sp-deck { display:none; }
-      #splash .sp-meta { margin-top:16px; }
-      #splash .btns { margin-top:18px; }
-    }
-    @media (prefers-reduced-motion:reduce) { #splash, #splash * { animation:none !important; scroll-behavior:auto !important; transition-duration:.001ms !important; } }
+    #splash .mbtn.primary { color: #1a1205; background: linear-gradient(135deg, #f5cf6a, #e2b53e); border-color: #f5cf6a;
+      box-shadow: 0 16px 40px rgba(226,181,62,.4); }
+    #splash .mbtn.primary:hover { filter: brightness(1.06); box-shadow: 0 20px 52px rgba(245,207,106,.5); }
+    #splash .mbtn.primary::after { content: ""; position: absolute; inset: -2px; border-radius: 14px; z-index: -1;
+      background: linear-gradient(135deg, #f5cf6a, #e2b53e); filter: blur(14px); opacity: .5; animation: sp-breathe 3.4s ease-in-out infinite; }
+    @keyframes sp-breathe { 50% { opacity: .85; } }
+    #splash .ver { position: absolute; z-index: 4; bottom: 20px; left: 0; right: 0; text-align: center;
+      font-family: 'Sora'; font-size: 10.5px; letter-spacing: 3px; color: #6b7894; }
+    @media (max-width: 600px) { #splash .sp-sub { letter-spacing: 5px; } }
+    @media (prefers-reduced-motion: reduce) { #splash * { animation: none !important; transition-duration: .001ms !important; } }
   </style>
 </head>
 <body>
-  <!-- 启动页（联赛转播信号 · 生涯档案入口） -->
+  <!-- v4.0 启动页（电影首帧 · 居中主菜单） -->
   <div id="splash">
-    <div class="bgfx" aria-hidden="true"></div>
-    <div class="sp-grid" aria-hidden="true"></div>
-    <div class="sp-beams" aria-hidden="true"></div>
-    <div class="sp-stage" aria-hidden="true"></div>
-    <div class="sp-shell">
-      <div class="sp-topline" aria-hidden="true">
-        <span class="sp-channel">IVL BROADCAST SIGNAL</span>
-        <span class="sp-mode">CAREER MODE / PLAYER 01</span>
-      </div>
-      <main class="sp-main">
-        <div class="sp-reticle" aria-hidden="true"></div>
-        <div class="menu">
-          <div class="sp-kicker">PRO LEAGUE CAREER</div>
-          <h1 class="sp-logo">IVL</h1>
-          <div class="sp-sub">职业选手生涯模拟器</div>
-          <p class="sp-deck">从新人训练室走进联赛主舞台，写下属于你的赛场档案</p>
-          <div class="sp-meta" aria-label="游戏信息">
-            <div class="sp-stat"><b>2026</b><span>SEASON</span></div>
-            <div class="sp-stat"><b>ROOKIE</b><span>ENTRY</span></div>
-            <div class="sp-stat"><b>ONLINE</b><span>SIGNAL</span></div>
-          </div>
-          <div class="btns">
-            <button class="mbtn primary" id="splashStart" type="button">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4l11 8-11 8V4z"/></svg>
-              开始生涯
-            </button>
-            <button class="mbtn" id="splashCodex" type="button" hidden>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></svg>
-              结局与成就
-            </button>
-          </div>
-        </div>
-      </main>
-      <div class="sp-bottom" aria-hidden="true">
-        <div class="sp-file"><span>FILE</span><b>IVL-CM/01</b><span>STATUS</span><b>READY TO DRAFT</b></div>
-        <div class="ver">IVL SIMULATOR · v7.0</div>
+    <div class="bgfx"></div>
+    <div class="beam"></div>
+    <div class="orbs">
+      <span class="orb"    style="left:14%;top:64%;--mx:40px;--my:-120px;--d:24s;--delay:0s"></span>
+      <span class="orb w"  style="left:26%;top:38%;--mx:-32px;--my:-90px;--d:30s;--delay:5s"></span>
+      <span class="orb b"  style="left:40%;top:74%;--mx:50px;--my:-150px;--d:27s;--delay:2s"></span>
+      <span class="orb"    style="left:58%;top:30%;--mx:-46px;--my:-110px;--d:33s;--delay:8s"></span>
+      <span class="orb w"  style="left:70%;top:60%;--mx:36px;--my:-130px;--d:26s;--delay:3.5s"></span>
+      <span class="orb"    style="left:84%;top:44%;--mx:-40px;--my:-100px;--d:31s;--delay:6.5s"></span>
+      <span class="orb b"  style="left:48%;top:52%;--mx:28px;--my:-140px;--d:29s;--delay:11s"></span>
+      <span class="orb w"  style="left:90%;top:70%;--mx:-30px;--my:-95px;--d:28s;--delay:9s"></span>
+    </div>
+    <div class="vignette"></div>
+    <div class="menu">
+      <h1 class="sp-logo">IVL</h1>
+      <div class="sp-sub">模 拟 器</div>
+      <div class="btns">
+        <button class="mbtn primary" id="splashStart">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-14 9V3z"/></svg>
+          开始生涯
+        </button>
+        <button class="mbtn" id="splashCodex" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.6 6.6L21.5 9l-5.2 4.4L18 21l-6-3.6L6 21l1.7-7.6L2.5 9l6.9-.4L12 2z"/></svg>
+          结局与成就
+        </button>
       </div>
     </div>
+    <div class="ver">IVL SIMULATOR · v7.0</div>
   </div>
 
   <div class="app">
