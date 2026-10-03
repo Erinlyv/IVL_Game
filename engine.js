@@ -1030,6 +1030,7 @@ function reasonTags(p, ctx) {
 /* ------------------------- 成就 / 最终结局 ----------------------------- */
 function computeAchievements(p, fullCareer, grandSlam, forced) {
   const a = {};
+  for(const [name,medal] of [["金牌得主","金牌"],["银牌得主","银牌"],["铜牌得主","铜牌"]]) a[name]=!!(p.sports?.awarded && p.sports.medal===medal);
   const total = p.totalChamp;
   const nonIvs = p.champ["夏"] + p.champ["秋"] + p.champ["深渊"];
   const survivor = (p.role === "求生者");
@@ -1105,6 +1106,7 @@ function computeAchievements(p, fullCareer, grandSlam, forced) {
 
 function finalEnding(p, fullCareer, grandSlam, forced, ach) {
   if (forced) return forced;
+  if (p.sports?.awarded && p.sports.medal === "金牌" && grandSlam && ach["看台上的星海"]) return "传奇之上";
   const total = p.totalChamp;
   const dynasty = ach["专属王朝"], bigSlam = ach["大满贯"];
   if (grandSlam && ach["看台上的星海"] && ach["年度最佳演绎"]) return "时代丰碑";
@@ -1124,6 +1126,7 @@ function finalEnding(p, fullCareer, grandSlam, forced, ach) {
 
 /* ----------------------- 结局 / 成就 文案库 ---------------------------- */
 const ENDING_TEXT = {
+  "传奇之上": "自此，传奇有了终点，后来者有了天穹。",
   // §13.1 特殊结局（半途触发）
   "饮水机管理员": "长江后浪推前浪，电子竞技最不缺新鲜血液，漫长的备战间生涯消磨了你的青春与斗志。",
   "你被开除了！": "职业道德比技术更重要，未成年红线碰不得。",
@@ -1150,6 +1153,9 @@ const ENDING_TEXT = {
 };
 
 const ACH_DESC = {
+  "金牌得主": "获得洲际运动会电子竞技项目金牌",
+  "银牌得主": "获得洲际运动会电子竞技项目银牌",
+  "铜牌得主": "获得洲际运动会电子竞技项目铜牌",
   "金满贯": "同一年内夺得夏/秋/IVS/深渊四冠",
   "大满贯": "夏/秋/深渊冠军各至少 1 次",
   "洲际之巅": "IVS 冠军 ≥1",
@@ -1206,6 +1212,7 @@ const ACH_DESC = {
  * 结局：黄金 / 白银 / 青铜 / 普通。分级用于成就弹出条与结局界面的字体颜色 / 特效。
  * 隐藏成就在成就表里初始显示「？？？」，达成后才解锁。 */
 const ACH_TIER = {
+  "金牌得主": "黄金", "银牌得主": "白银", "铜牌得主": "青铜",
   "人生百味": "白金",
   "金满贯": "黄金", "大满贯": "黄金", "专属王朝": "黄金", "电竞白月光": "黄金", "看台上的星海": "黄金",
   "无双": "黄金", "逆版本的神": "黄金", "老大": "黄金",
@@ -1223,6 +1230,7 @@ const ACH_TIER = {
 // demov4.2feedback：万能螺丝改为非隐藏（白银）；新增隐藏成就「老大」。
 const ACH_HIDDEN = new Set(["绝活信仰玩家", "返老还童", "庄园快信", "逆转未来", "老大"]);
 const ENDING_TIER = {
+  "传奇之上": "黄金",
   "时代丰碑": "黄金", "黄金之路": "黄金", "终章封王": "黄金", "国民选手": "黄金", "专属王朝": "黄金",
   "金雨之下": "白银", "无冕之王": "白银", "可靠老将": "白银", "校长好": "白银",
   "常青绿叶": "青铜", "联盟熟面孔": "青铜", "签约艺人": "青铜", "短剧演员": "青铜", "转行解说": "青铜", "转行教练": "青铜",

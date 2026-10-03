@@ -376,6 +376,7 @@ function useItem(name) {
     flash(`使用${name}：本赛年技术/战术/体能成长衰减归零`);
   }
   P.inv[name] -= 1;
+  if(window.IVLSports?.active){window.IVLSports.active.pull();window.IVLSports.active.save();}
   renderHUD();
   // v4.2（demov4.1feedback4）：用药补体力后，训练面板里因体力不足灰掉的项目即时亮起。
   if (typeof trainPanelRefresh === "function") { trainPanelRefresh(); }
@@ -398,6 +399,7 @@ function achDisplayClass(name) { return ACH_SPECIAL_CLASS[name] || ACH_TIER_CLAS
  * 只对「单调成立、达成即锁定」的里程碑成就做即时弹（避免依赖生涯终局/0 冠等末态条件的成就提前误弹）。
  * 金满贯依赖深渊终局判定，仍在结局阶段统一弹出。 */
 const INSTANT_ACH = new Set([
+  "金牌得主", "银牌得主", "铜牌得主",
   "大满贯", "洲际之巅", "冠军选手", "FMVP", "专属王朝", "电竞白月光", "六边形战士", "操作手", "战队大脑",
   "大器晚成", "浪迹天涯", "轻伤不下火线", "绝活信仰玩家", "返老还童", "庄园快信", "逆转未来", "万能螺丝",
   "光荣的荆棘路", "英雄出少年", "百炼成钢", "年度最佳演绎",
@@ -2573,108 +2575,92 @@ async function yearSettle() {
   }
 }
 
-async function career(startYear = 1) {
-  // grandSlam 跨赛年累积,但只是 career() 的局部变量;续局须从 P 上恢复(P 已持久化)。
-  let grandSlam = !!(P && P._grandSlam), forced = null, yearsCompleted = 0;
-  try {
-    for (curYear = startYear; curYear <= E.CONFIG.YEARS; curYear++) {
-      curAge = E.CONFIG.START_AGE + (curYear - 1);
-      P.cur_year = curYear; P.year_f = [];
-      renderHUD();
-      // demov4.3feedback《赛年结算》：记录赛年开始时的数值 + 容貌 + 队友实力，用于年末结算列出增长幅度。
-      yearStartSnap = { tech: P.tech, tac: P.tac, phys: P.phys, stab: P.stab, pop: P.pop, money: P.money,
-                        appearance: P.appearance, teamNpc: P.teamNpc(curYear) };
-      // 单槽续局·每赛年自动存档:此刻本年赛事 / yearIntro 均未执行,续局即从本年干净重打。
-      saveRun();
-      await yearIntro();
-      await seasonGoalPanel();
-      await shopPhase();
-      await commercialRestOffer();
-      if (E.isGoldenPlayer(P) && curYear === 2) { await goldenRankVsMatchEvent(); }
-
-      const yc = new Set();
-      let summerRank = 8, autumnRank = 8;
-      let summerMissedPlayoff = false, autumnMissedPlayoff = false;
-      let summerPlayoffNoWin = false, autumnPlayoffNoWin = false;
-
-      setYearPhase(0);
-      const n1 = (P.identity === "青训" && curYear === 1) ? 7 : (P.rest_active ? E.CONFIG.REST_TRAIN_N : 5);
-      await trainingPeriod(n1, "训练① · 季前");
-
-      setYearPhase(1);
-      if (E.isGoldenPlayer(P) && curYear === 1) { await goldenProDebutEvent(); }
-      if (await selection("夏季赛")) {
-        const b = P.champ["夏"];
-        summerRank = await playDomestic("夏");
-        summerMissedPlayoff = !P._last_domestic_in_playoff;
-        summerPlayoffNoWin = !!P._last_domestic_in_playoff && (P._last_domestic_playoff_wins || 0) <= 0;
-        if (P.champ["夏"] > b) yc.add("夏");
-      }
-      await transferWindow("夏季赛后");
-      if (E.isGoldenPlayer(P) && curYear === 3) { await goldenOldFriendEvent(); }
-
-      setYearPhase(2);
-      if (summerRank <= 2 && P.is_starter) { const b = P.champ["IVS"]; await playIVS(); if (P.champ["IVS"] > b) yc.add("IVS"); }
-
-      setYearPhase(3);
-      if (E.isGoldenPlayer(P) && curYear === 1) { await goldenRolePoolEvent(); }
-      if (E.isGoldenPlayer(P) && curYear === 2) { await goldenTargetedEvent(); }
-      await trainingPeriod(P.rest_active ? E.CONFIG.REST_TRAIN_N : 5, "训练② · 夏秋之间");
-
-      setYearPhase(4);
-      if (await selection("秋季赛")) {
-        const b = P.champ["秋"];
-        autumnRank = await playDomestic("秋");
-        autumnMissedPlayoff = !P._last_domestic_in_playoff;
-        autumnPlayoffNoWin = !!P._last_domestic_in_playoff && (P._last_domestic_playoff_wins || 0) <= 0;
-        if (P.champ["秋"] > b) yc.add("秋");
-      }
-
-      setYearPhase(5);
-      await trainingPeriod(P.rest_active ? E.CONFIG.REST_TRAIN_N : 5, "训练③ · 深渊前");
-
-      setYearPhase(6);
-      if (await selection("深渊")) {
-        const seeded = (summerRank + autumnRank) / 2.0 <= 2.0;
-        // v6.0：每多 1 冠 −2/场，整场封顶 −6。
-        P._abyss_fatigue = Math.min(E.CONFIG.ABYSS_SYNC_FATIGUE_CAP, E.CONFIG.ABYSS_SYNC_FATIGUE_PER * yc.size);
-        const b = P.champ["深渊"]; await playAbyss(seeded); P._abyss_fatigue = 0;
-        if (P.champ["深渊"] > b) yc.add("深渊");
-      }
-
-      if (["夏", "秋", "IVS", "深渊"].every(k => yc.has(k))) { grandSlam = true; P._grandSlam = true; }
-
-      setYearPhase(7);
-      await transferWindow("赛季末");
-      await annualAwards();
-      if (P.rest_active) { P.addPop(E.rnd(...E.CONFIG.REST_POP_RANGE)); P.rest_year_count += 1; }
-      await yearSettle();
-
-      if (E.isGoldenPlayer(P)) {
-        P.golden_no_champ_years = yc.size === 0 ? (P.golden_no_champ_years || 0) + 1 : 0;
-        if (summerMissedPlayoff || autumnMissedPlayoff || summerPlayoffNoWin || autumnPlayoffNoWin || P.golden_no_champ_years >= 2) {
-          await goldenQuestionedEvent();
-        }
-      }
-
-      for (const name of E.specialTriggers(P, curYear)) {
-        if (P.offered.has(name)) continue;
-        if (await offerSpecial(name)) { forced = name; throw { forced: name, special: true }; }
-      }
-
-      // 伤重退役计时(年末)
-      if (P.teno_active && P.teno_onset_year !== null && (curYear - P.teno_onset_year) >= 1) {
-        throw { forced: "伤重退役" };
-      }
-      yearsCompleted = curYear;
-    }
-  } catch (e) {
-    // demov4.2feedback《自由转会》：被拒 3 次自动退役 —— 提前结束生涯，走正常结局结算（非强制特殊结局）。
-    if (e && e.retire) { forced = null; }
-    else if (e && e.forced) forced = e.forced; else throw e;
+function sportsEscape(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+async function sportsPhase(phase) {
+  if (!window.IVLSports) return;
+  const s = window.IVLSports.ensure(P, curYear);
+  if (phase === 'selection' && !(['selecting'].includes(s.status) || (s.enabled && s.status === 'scheduled' && s.noticeYear === curYear))) return;
+  if (phase === 'tournament' && !['selected', 'tournament'].includes(s.status)) return;
+  setStage(phase === 'selection' ? '洲际运动会 · 国家队选拔' : '洲际运动会');
+  await window.IVLSports.run({player:P, teams:gameTeams, year:curYear, phase, save:saveRun,
+    log:text=>pushLog(text, ''), hud:renderHUD, achievement:liveAchCheck,
+    bag:()=>new Promise(resolve=>{openGlobalBag();const box=document.getElementById('gbag');
+      const observer=new MutationObserver(()=>{if(!box.classList.contains('show')){observer.disconnect();resolve();}});
+      observer.observe(box,{attributes:true,attributeFilter:['class']});
+    })});
+  liveAchCheck(); renderHUD();
+}
+async function sportsSummerReport() {
+  const s=P.sports;
+  if (!s.clubSummer) {
+    const names=[P.teamName,...(gameTeams.cn||[])].filter((n,i,a)=>a.indexOf(n)===i);
+    const form=names.map(name=>({name,form:(gameTeams.meta?.[name]?.base||E.teamBaseStrength(name))+E.rnd(-8,8)})).sort((a,b)=>b.form-a.form);
+    s.clubSummer={year:curYear,rank:form.findIndex(t=>t.name===P.teamName)+1,champion:form[0].name};saveRun();
   }
-  const fullCareer = (forced === null) && (yearsCompleted === E.CONFIG.YEARS);
-  await ending(grandSlam, forced, fullCareer);
+  pushLog(`国家队征召 · 未随队参加夏季赛，${P.teamName}获得第${s.clubSummer.rank}名。`, '');
+  await say('俱乐部夏季赛战报', `<p>本赛年因国家队征召，你没有随俱乐部参加夏季赛。</p><p>${sportsEscape(P.teamName)}获得第${s.clubSummer.rank}名，本届冠军为${sportsEscape(s.clubSummer.champion)}。</p><p class="muted">俱乐部成绩不计入你的个人冠军、FMVP或参赛记录。</p>`, '继续生涯');
+}
+async function career(startYear = 1) {
+  let grandSlam = !!P._grandSlam, forced = null, yearsCompleted = P._yearsCompleted || 0;
+  window.IVLSports?.ensure(P, startYear);
+  try {
+    for (curYear=startYear;curYear<=E.CONFIG.YEARS;curYear++) {
+      curAge=E.CONFIG.START_AGE+curYear-1;P.cur_year=curYear;
+      let cp=P._careerCheckpoint;
+      if(!cp||cp.year!==curYear){
+        P.year_f=[];
+        cp=P._careerCheckpoint={year:curYear,step:'intro',yc:[],summerRank:8,autumnRank:8,
+          summerMissedPlayoff:false,autumnMissedPlayoff:false,summerPlayoffNoWin:false,autumnPlayoffNoWin:false,
+          snap:{tech:P.tech,tac:P.tac,phys:P.phys,stab:P.stab,pop:P.pop,money:P.money,appearance:P.appearance,teamNpc:P.teamNpc(curYear)}};
+        saveRun();
+      }
+      yearStartSnap=cp.snap;const yc=new Set(cp.yc||[]);
+      async function step(name,next,fn){if(cp.step!==name)return;await fn();cp.yc=[...yc];cp.step=next;saveRun();}
+      renderHUD();
+      await step('intro','summerTrain',async()=>{await yearIntro();await seasonGoalPanel();await shopPhase();await commercialRestOffer();if(E.isGoldenPlayer(P)&&curYear===2)await goldenRankVsMatchEvent();});
+      await step('summerTrain','summer',async()=>{
+        setYearPhase(0);const n=(P.identity==='青训'&&curYear===1)?7:(P.rest_active?E.CONFIG.REST_TRAIN_N:5);await trainingPeriod(n,'训练① · 季前');
+      });
+      await step('summer','ivs',async()=>{
+        setYearPhase(1);
+        if(!(P.sports?.selected&&P.sports.skipSummerYear===curYear)) {
+          if(E.isGoldenPlayer(P)&&curYear===1)await goldenProDebutEvent();
+          if(await selection('夏季赛')){const b=P.champ['夏'];cp.summerRank=await playDomestic('夏');cp.summerMissedPlayoff=!P._last_domestic_in_playoff;cp.summerPlayoffNoWin=!!P._last_domestic_in_playoff&&(P._last_domestic_playoff_wins||0)<=0;if(P.champ['夏']>b)yc.add('夏');}
+        }
+        await transferWindow('夏季赛后');if(E.isGoldenPlayer(P)&&curYear===3)await goldenOldFriendEvent();
+      });
+      await step('ivs','autumnTrain',async()=>{setYearPhase(2);if(cp.summerRank<=2&&P.is_starter){const b=P.champ.IVS;await playIVS();if(P.champ.IVS>b)yc.add('IVS');}});
+      await step('autumnTrain','autumn',async()=>{setYearPhase(3);if(E.isGoldenPlayer(P)&&curYear===1)await goldenRolePoolEvent();if(E.isGoldenPlayer(P)&&curYear===2)await goldenTargetedEvent();await trainingPeriod(P.rest_active?E.CONFIG.REST_TRAIN_N:5,'训练② · 夏秋之间');});
+      await step('autumn','sportsSelection',async()=>{setYearPhase(4);if(await selection('秋季赛')){const b=P.champ['秋'];cp.autumnRank=await playDomestic('秋');cp.autumnMissedPlayoff=!P._last_domestic_in_playoff;cp.autumnPlayoffNoWin=!!P._last_domestic_in_playoff&&(P._last_domestic_playoff_wins||0)<=0;if(P.champ['秋']>b)yc.add('秋');}});
+      await step('sportsSelection','abyssTrain',async()=>{await sportsPhase('selection');});
+      await step('abyssTrain','abyss',async()=>{setYearPhase(5);await trainingPeriod(P.rest_active?E.CONFIG.REST_TRAIN_N:5,'训练③ · 深渊前');});
+      await step('abyss','sportsTournament',async()=>{
+        setYearPhase(6);if(await selection('深渊')){const seeded=(cp.summerRank+cp.autumnRank)/2<=2;
+          P._abyss_fatigue=Math.min(E.CONFIG.ABYSS_SYNC_FATIGUE_CAP,E.CONFIG.ABYSS_SYNC_FATIGUE_PER*yc.size);
+          const b=P.champ['深渊'];await playAbyss(seeded);P._abyss_fatigue=0;if(P.champ['深渊']>b)yc.add('深渊');}
+        if(['夏','秋','IVS','深渊'].every(k=>yc.has(k))){grandSlam=true;P._grandSlam=true;}
+      });
+      // The branch finishes before year-end/retirement, including notification in Y7.
+      await step('sportsTournament','yearTransfer',async()=>{
+        await sportsPhase('tournament');
+        // 国家队支线结束后再告知缺席夏季赛的俱乐部成绩，避免提前打断支线节奏。
+        if(P.sports?.selected&&P.sports.skipSummerYear===curYear)await sportsSummerReport();
+      });
+      await step('yearTransfer','awards',async()=>{setYearPhase(7);await transferWindow('赛季末');});
+      await step('awards','yearSettle',async()=>{await annualAwards();if(P.rest_active){P.addPop(E.rnd(...E.CONFIG.REST_POP_RANGE));P.rest_year_count++;}});
+      await step('yearSettle','retirement',async()=>{await yearSettle();});
+      await step('retirement','done',async()=>{
+        if(E.isGoldenPlayer(P)){P.golden_no_champ_years=yc.size===0?(P.golden_no_champ_years||0)+1:0;if(cp.summerMissedPlayoff||cp.autumnMissedPlayoff||cp.summerPlayoffNoWin||cp.autumnPlayoffNoWin||P.golden_no_champ_years>=2)await goldenQuestionedEvent();}
+        for(const name of E.specialTriggers(P,curYear)){if(P.offered.has(name))continue;if(await offerSpecial(name)){forced=name;throw {forced:name,special:true};}}
+        if(P.teno_active&&P.teno_onset_year!==null&&(curYear-P.teno_onset_year)>=1)throw {forced:'伤重退役'};
+        yearsCompleted=curYear;P._yearsCompleted=curYear;
+      });
+    }
+  }catch(e){if(e&&e.retire)forced=null;else if(e&&e.forced)forced=e.forced;else throw e;
+    if(P.sports&&['selecting','selected','tournament'].includes(P.sports.status)){P.sports.status='withdrawn';P.sports.result='退赛';P.sports.medal=null;}
+  }
+  const fullCareer=forced===null&&yearsCompleted===E.CONFIG.YEARS;
+  await ending(grandSlam,forced,fullCareer);
 }
 
 /* ============================== 结局 ================================== */
@@ -2695,6 +2681,7 @@ async function ending(grandSlam, forced, fullCareer) {
   const got = Object.keys(ach).filter(k => ach[k]);
   // 生涯战报卡数据（v3.0）：用于可截图分享 + 持久化存档。
   const rec = {
+    sports: P.sports ? {result:P.sports.result,medal:P.sports.medal,selected:P.sports.selected,roster:P.sports.roster,noticeYear:P.sports.noticeYear} : null,
     v: 3, name: P.name, playerId: P.playerId, teamName: P.teamName,
     role: P.role, idShort: idShort(P), final: finalName, kind: isForced ? "forced" : (isSpecial ? "special" : "final"),
     golden: E.isGoldenPlayer(P), golden_first_abyss_label: P.golden_first_abyss_label || "", golden_champion_skins: P.golden_champion_skins || [],
@@ -2801,6 +2788,7 @@ function warCardHtml(rec, isForced) {
           <div class="sc-ename ${endingTierClass(rec.final)}" data-tier="${tier}">${rec.final}</div>
           <div class="sc-etier ${endingTierClass(rec.final)}">${tier}结局</div>
           <div class="sc-quote">${endingText}</div>
+          ${rec.sports?.selected ? `<p class="muted">洲际运动会 · CHN · ${sportsEscape(rec.sports.result || "参赛")} ${sportsEscape(rec.sports.medal || "")}</p>` : ""}
         </div>
         <div class="sc-hr"></div>
         <div class="sc-radar">
@@ -2829,7 +2817,7 @@ function warCardHtml(rec, isForced) {
           <div class="sc-sechead between"><div class="left"><span class="bar"></span><h3>已达成就</h3></div><div class="prog">本档解锁 <b>${rec.achs.length}</b> / ${allA}</div></div>
           <div class="chips">${chips}</div>
         </div>
-        <div class="sc-foot"><span class="tip">📸 截图保存这张战报卡，晒到同人圈吧！</span><span class="sc-date">${rec.date} · #IVL模拟器 v6.1</span></div>
+        <div class="sc-foot"><span class="tip">📸 截图保存这张战报卡，晒到同人圈吧！</span><span class="sc-date">${rec.date} · #IVL模拟器 v7.0</span></div>
       </div>
     </div>`;
 }
@@ -2850,7 +2838,8 @@ function warCardText(rec) {
     lines.push(`深渊冠军皮：${rec.golden_champion_skins.map((s) => `${s.main}/${s.partner}`).join("、")}`);
   }
   lines.push(`解锁成就（${rec.achs.length}）：${rec.achs.join("、") || "无"}`);
-  lines.push(`#IVL模拟器 v6.1`);
+  if(rec.sports?.selected)lines.push(`洲际运动会 · CHN · ${rec.sports.result || "参赛"} ${rec.sports.medal || ""}`);
+  lines.push(`#IVL模拟器 v7.0`);
   return lines.filter(Boolean).join("\n");
 }
 
@@ -3018,6 +3007,8 @@ function renderShareCanvas(rec, qrImg) {
   grid4(`冠军 · 按赛事（共 ${totalChamp} 冠）`, [["夏季赛", rec.champ["夏"]], ["秋季赛", rec.champ["秋"]], ["洲际 IVS", rec.champ["IVS"]], ["深渊赛", rec.champ["深渊"]]]);
   grid4("其他荣誉", [["亚军", rec.runnerups], ["季军", rec.thirds], ["FMVP", rec.fmvp_total], ["名场面", rec.spotlights.length]]);
 
+  if(rec.sports?.selected){ctx.font=`500 13px ${FB}`;ctx.fillStyle=gold;ctx.fillText(`洲际运动会 · CHN · ${rec.sports.result || "参赛"} ${rec.sports.medal || ""}`,P,y);y+=30;}
+
   // —— 已达成就（chips 自动换行）——
   const allA = Object.keys(E.ACH_DESC).length;
   ctx.font = `700 16px ${FH}`; ctx.fillStyle = "#eef2f8"; ctx.fillText("已达成就", P, y);
@@ -3045,7 +3036,7 @@ function renderShareCanvas(rec, qrImg) {
   ctx.font = `600 14px ${FB}`; ctx.fillStyle = "#cfd6e6";
   ctx.fillText("扫码体验 · IVL 模拟器", P, y + 6);
   ctx.font = `400 12px ${FB}`; ctx.fillStyle = "#7c89a3";
-  ctx.fillText(`${rec.date} · #IVL模拟器 v6.1`, P, y + 30);
+  ctx.fillText(`${rec.date} · #IVL模拟器 v7.0`, P, y + 30);
   ctx.font = `400 11px ${FB}`; ctx.fillStyle = "#5d6884";
   ctx.fillText("长按图片保存到相册分享", P, y + 52);
   y += qrS + 24;
@@ -3277,7 +3268,8 @@ function resumeRun(run) {
   logLines = Array.isArray(run.logLines) ? run.logLines : [];
   yearPhase = 0;
   renderHUD();
-  pushLog(`继续生涯:从第${curYear}赛年接着打。`, "");
+  window.IVLSports?.ensure(P, curYear);
+  pushLog(`继续生涯:从第${curYear}赛年已保存的节点接着打。`, "");
 }
 function rvBar(k, v, c) { return `<div class="rvbar"><span>${k}</span><div class="rvtrack"><i style="width:${Math.min(100, v)}%;background:${c}"></i></div><b>${v.toFixed(0)}</b></div>`; }
 // 运气结局揭晓（v6.5《demov2.2feedback》）：运气全程隐藏，仅在生涯落幕时把本轮数值与一句注脚告诉玩家。

@@ -7,15 +7,16 @@ on:
     branches: [main]
 
 # 纯静态前端、零运行时依赖：CI 仅在 Node 下跑自测脚本。
-# _uitest / _kotest / _gftest 依赖 jsdom（仅测试期），由 package-lock 固定版本。
+# _uitest / _kotest / _gftest / _sportstest 依赖 jsdom（仅测试期），由 package-lock 固定版本。
+# _sports-browser.cjs 依赖未安装的 Playwright Chromium，仅供本地验证，不纳入 CI。
 # 注：_strategyplay.js 是本地攻略实测实验（jsdom 全生涯驱动、无平衡断言、约 2.5 min/生涯），
-#     不纳入 CI 门禁；崩溃回归已由 _uitest 覆盖。需要时本地手动跑：node _strategyplay.js [N]。
+#     不纳入 CI 门禁；崩溃回归已由 _uitest 覆盖。需要时本地手动跑：npm run test:strategy -- [N]。
 permissions:
   contents: read
 
 jobs:
   test:
-    name: 自测脚本（冒烟 / UI / KO/后悔药 / 冠亚决赛）
+    name: 自测脚本（冒烟 / UI / KO/后悔药 / 冠亚决赛 / 运动会规则）
     runs-on: ubuntu-latest
     steps:
       - name: 检出代码
@@ -44,3 +45,6 @@ jobs:
 
       - name: 冠亚决赛弹窗定向冲烟（7 定位 · jsdom）
         run: npm run test:gf
+
+      - name: 运动会规则测试（80 随机种子 · jsdom）
+        run: npm run test:sports
